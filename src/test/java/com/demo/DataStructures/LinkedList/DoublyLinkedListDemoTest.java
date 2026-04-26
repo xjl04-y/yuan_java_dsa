@@ -1,5 +1,6 @@
-package com.demo.LinkedList;
+package com.demo.DataStructures.LinkedList;
 
+import com.demo.DataStructures.LinkedList.DoublyLinkedListDemo;
 import org.junit.jupiter.api.Test;
 
 public class DoublyLinkedListDemoTest {

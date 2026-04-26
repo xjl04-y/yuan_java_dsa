@@ -1,4 +1,4 @@
-package com.demo.LinkedList;
+package com.demo.DataStructures.LinkedList;
 
 /**
  * 双向链表 (Doubly Linked List) 完整实现与避坑指南

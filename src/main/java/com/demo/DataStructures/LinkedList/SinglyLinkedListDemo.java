@@ -1,4 +1,4 @@
-package com.demo.LinkedList;
+package com.demo.DataStructures.LinkedList;
 
 /**
  * 单向链表实现

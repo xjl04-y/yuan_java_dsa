@@ -1,5 +1,6 @@
-package com.demo.LinkedList;
+package com.demo.DataStructures.LinkedList;
 
+import com.demo.DataStructures.LinkedList.SinglyLinkedListDemo;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
