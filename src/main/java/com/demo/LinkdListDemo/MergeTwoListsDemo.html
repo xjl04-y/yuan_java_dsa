@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>合并两个有序链表原理演示</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Consolas', monospace; background-color: #0f172a; color: #e2e8f0; }
+
+        .memory-block {
+            border: 2px solid #334155; background-color: #1e293b; border-radius: 8px;
+            width: 60px; height: 60px; transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+            position: absolute; z-index: 20; display: flex; align-items: center; justify-content: center;
+            font-size: 1.5rem; font-weight: bold; color: #22c55e;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+        }
+
+        .dummy-block { border-color: #f59e0b; background-color: #451a03; color: #f59e0b; }
+        .l1-block { border-color: #3b82f6; }
+        .l2-block { border-color: #ec4899; }
+
+        .pointer-tag {
+            position: absolute; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 0.75rem;
+            transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); z-index: 30;
+        }
+        .ptr-l1 { background-color: #2563eb; color: white; top: -30px; left: 50%; transform: translateX(-50%); }
+        .ptr-l2 { background-color: #db2777; color: white; bottom: -30px; left: 50%; transform: translateX(-50%); }
+        .ptr-curr { background-color: #d97706; color: white; bottom: -30px; left: 50%; transform: translateX(-50%); }
+
+        .code-line { padding: 4px 12px; border-left: 4px solid transparent; transition: all 0.2s; font-size: 0.8rem; }
+        .code-active { background-color: #1e3a8a; border-left-color: #60a5fa; color: #fff; font-weight: bold; }
+
+        svg { pointer-events: none; position: absolute; inset: 0; width: 100%; height: 100%; z-index: 10; }
+        .link-line { fill: none; stroke-width: 3; stroke-dasharray: 1000; stroke-dashoffset: 1000; animation: draw 0.6s forwards; }
+        @keyframes draw { to { stroke-dashoffset: 0; } }
+
+        .fade-out { opacity: 0.3; filter: grayscale(100%); }
+    </style>
+</head>
+<body class="h-screen flex flex-col p-4 overflow-hidden">
+
+<div class="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-6 h-full">
+
+    <!-- 左侧：代码与控制 -->
+    <div class="flex flex-col lg:col-span-5 gap-4 h-full">
+        <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl">
+            <h2 class="text-blue-400 font-bold mb-4 flex items-center gap-2">LeetCode 21: 合并两个有序链表</h2>
+            <div class="flex gap-2 mb-4">
+                <button id="nextBtn" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-lg font-bold transition shadow-lg">单步执行</button>
+                <button id="resetBtn" class="px-4 bg-slate-700 text-slate-300 rounded-lg font-bold hover:bg-slate-600">重置</button>
+            </div>
+            <div class="bg-slate-900 p-3 rounded-lg border border-slate-700">
+                <p id="explainText" class="text-xs font-bold text-amber-400 leading-relaxed">
+                    点击“单步执行”开始。我们将看到 Dummy Node（哨兵节点）的奇妙用法。
+                </p>
+            </div>
+        </div>
+
+        <!-- 代码预览 -->
+        <div class="bg-slate-900 p-4 rounded-2xl border border-slate-700 flex-grow font-mono overflow-y-auto shadow-inner">
+            <div id="line-1" class="code-line text-amber-300">ListNode dummy = new ListNode(-1);</div>
+            <div id="line-2" class="code-line text-amber-300">ListNode curr = dummy;</div>
+            <div id="line-3" class="code-line mt-2 text-slate-400">// 当两个队伍都有人时，比较队首</div>
+            <div id="line-4" class="code-line">while (list1 != null && list2 != null) {</div>
+            <div id="line-5" class="code-line pl-4">if (list1.val <= list2.val) {</div>
+            <div id="line-6" class="code-line pl-8">curr.next = list1;</div>
+            <div id="line-7" class="code-line pl-8">list1 = list1.next;</div>
+            <div id="line-8" class="code-line pl-4">} else {</div>
+            <div id="line-9" class="code-line pl-8">curr.next = list2;</div>
+            <div id="line-10" class="code-line pl-8">list2 = list2.next;</div>
+            <div id="line-11" class="code-line pl-4">}</div>
+            <div id="line-12" class="code-line pl-4 text-slate-400">// curr 往前走一步</div>
+            <div id="line-13" class="code-line pl-4">curr = curr.next;</div>
+            <div id="line-14" class="code-line">}</div>
+            <div id="line-15" class="code-line mt-2 text-slate-400">// 把剩下没排完的队伍直接接在后面</div>
+            <div id="line-16" class="code-line">curr.next = list1 != null ? list1 : list2;</div>
+            <div id="line-17" class="code-line mt-2 text-purple-400 font-bold">return dummy.next;</div>
+        </div>
+    </div>
+
+    <!-- 右侧：动态内存舞台 -->
+    <div class="bg-slate-900 lg:col-span-7 rounded-2xl border border-slate-700 relative p-6 flex flex-col shadow-2xl overflow-hidden">
+        <div class="flex justify-between items-center mb-6 z-40 bg-slate-800/80 p-3 rounded-xl border border-slate-700">
+            <span class="text-slate-500 text-[10px] font-black uppercase tracking-widest">Linked List Merger Sandbox</span>
+            <div class="flex gap-4 font-mono text-[10px] font-bold">
+                <span class="text-blue-400">List 1: [1, 2, 4]</span>
+                <span class="text-pink-400">List 2: [1, 3, 4]</span>
+            </div>
+        </div>
+
+        <div class="flex-grow relative" id="heapArea">
+            <!-- SVG 连线层 -->
+            <svg id="svgContainer">
+                <defs>
+                    <marker id="arrow-next" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#94a3b8"/></marker>
+                    <marker id="arrow-curr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#d97706"/></marker>
+                </defs>
+            </svg>
+
+            <!-- 节点容器，通过 JS 渲染 -->
+            <div id="nodesLayer" class="absolute inset-0"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 节点数据结构
+    const l1Data = [1, 2, 4];
+    const l2Data = [1, 3, 4];
+
+    let nodes = {}; // 存放所有节点的坐标信息
+    let connections = []; // 原本的连接
+    let newConnections = []; // 合并时的连接
+
+    let l1Idx = 0;
+    let l2Idx = 0;
+    let currNodeId = 'dummy';
+    let step = 0;
+
+    const nodesLayer = document.getElementById('nodesLayer');
+    const svgContainer = document.getElementById('svgContainer');
+    const explain = document.getElementById('explainText');
+    const nextBtn = document.getElementById('nextBtn');
+
+    function initNodes() {
+        // 绘制 Dummy Node
+        createNode('dummy', 'D', 40, 150, 'dummy-block');
+
+        // 绘制 List 1
+        l1Data.forEach((val, i) => {
+            const id = `l1-${i}`;
+            createNode(id, val, 180 + i * 120, 60, 'l1-block');
+            if (i < l1Data.length - 1) connections.push({from: id, to: `l1-${i+1}`});
+        });
+
+        // 绘制 List 2
+        l2Data.forEach((val, i) => {
+            const id = `l2-${i}`;
+            createNode(id, val, 180 + i * 120, 240, 'l2-block');
+            if (i < l2Data.length - 1) connections.push({from: id, to: `l2-${i+1}`});
+        });
+
+        // 添加指针
+        addPointer('ptr-curr', 'curr', 'dummy');
+        addPointer('ptr-l1', 'list1', 'l1-0');
+        addPointer('ptr-l2', 'list2', 'l2-0');
+
+        drawAllConnections();
+    }
+
+    function createNode(id, val, x, y, extraClass) {
+        nodes[id] = {id, val, x, y};
+        const div = document.createElement('div');
+        div.id = `node-${id}`;
+        div.className = `memory-block ${extraClass}`;
+        div.style.left = `${x}px`;
+        div.style.top = `${y}px`;
+        div.innerText = val;
+        nodesLayer.appendChild(div);
+    }
+
+    function addPointer(id, label, targetId) {
+        const ptr = document.createElement('div');
+        ptr.id = id;
+        ptr.className = `pointer-tag ${id.split('-')[1] === 'l1' ? 'ptr-l1' : (id.split('-')[1] === 'l2' ? 'ptr-l2' : 'ptr-curr')}`;
+        ptr.innerText = label;
+        document.getElementById(`node-${targetId}`).appendChild(ptr);
+    }
+
+    function movePointer(ptrId, targetId) {
+        const ptr = document.getElementById(ptrId);
+        if (!targetId) {
+            ptr.style.opacity = '0';
+            return;
+        }
+        document.getElementById(`node-${targetId}`).appendChild(ptr);
+    }
+
+    function drawAllConnections() {
+        // 保留 defs，清除 path
+        Array.from(svgContainer.children).forEach(c => { if(c.tagName !== 'defs') c.remove(); });
+
+        // 画原来的线
+        connections.forEach(c => drawLine(c.from, c.to, '#334155', 'arrow-next', true));
+        // 画新的 curr 线
+        newConnections.forEach(c => drawLine(c.from, c.to, '#d97706', 'arrow-curr', false));
+    }
+
+    function drawLine(fromId, toId, color, marker, isDashed) {
+        const from = document.getElementById(`node-${fromId}`).getBoundingClientRect();
+        const to = document.getElementById(`node-${toId}`).getBoundingClientRect();
+        const container = document.getElementById('heapArea').getBoundingClientRect();
+
+        const startX = from.left - container.left + from.width;
+        const startY = from.top - container.top + from.height / 2;
+        const endX = to.left - container.left;
+        const endY = to.top - container.top + to.height / 2;
+
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+
+        // 贝塞尔曲线，如果 y 不同则呈现 S 型
+        const ctrlX = (startX + endX) / 2;
+        const d = `M ${startX} ${startY} C ${ctrlX} ${startY}, ${ctrlX} ${endY}, ${endX - 4} ${endY}`;
+
+        path.setAttribute("d", d);
+        path.setAttribute("stroke", color);
+        if (isDashed) path.setAttribute("stroke-dasharray", "4,4");
+        path.setAttribute("class", "link-line");
+        path.setAttribute("marker-end", `url(#${marker})`);
+        svgContainer.appendChild(path);
+    }
+
+    function highlightLine(id) {
+        document.querySelectorAll('.code-line').forEach(l => l.classList.remove('code-active'));
+        if(id) document.getElementById('line-'+id).classList.add('code-active');
+    }
+
+    const simSteps = [
+        { line: 1, msg: "创建哨兵节点 (Dummy Node)。它就像一个临时站长，负责拉住新队伍的排头。" },
+        { line: 4, msg: "循环开始：只要 list1 和 list2 都有人，就开始比赛。" },
+
+        // 比较 1 和 1
+        { line: 5, msg: "比较 list1 (1) 和 list2 (1)。因为 1 <= 1 成立，所以挑 list1 的排头兵。" },
+        { line: 6, msg: "curr.next 指向 list1。", action: () => { newConnections.push({from: currNodeId, to: 'l1-0'}); drawAllConnections(); } },
+        { line: 7, msg: "list1 指针向后移一位，这名士兵算是出列了。", action: () => { l1Idx++; movePointer('ptr-l1', `l1-${l1Idx}`); document.getElementById('node-l1-0').classList.add('fade-out');} },
+        { line: 13, msg: "curr 向前移到刚接上的节点。", action: () => { currNodeId = 'l1-0'; movePointer('ptr-curr', currNodeId); } },
+
+        // 比较 2 和 1
+        { line: 4, msg: "继续下一轮比较..." },
+        { line: 5, msg: "比较 list1 (2) 和 list2 (1)。条件不成立，走 else 分支。" },
+        { line: 9, msg: "curr.next 指向 list2 (因为 1 更小)。", action: () => { newConnections.push({from: currNodeId, to: 'l2-0'}); drawAllConnections(); } },
+        { line: 10, msg: "list2 指针向后移一位。", action: () => { l2Idx++; movePointer('ptr-l2', `l2-${l2Idx}`); document.getElementById('node-l2-0').classList.add('fade-out');} },
+        { line: 13, msg: "curr 往前走。", action: () => { currNodeId = 'l2-0'; movePointer('ptr-curr', currNodeId); } },
+
+        // 比较 2 和 3
+        { line: 4, msg: "继续下一轮比较..." },
+        { line: 5, msg: "比较 list1 (2) 和 list2 (3)。挑 list1。" },
+        { line: 6, msg: "curr.next 指向 list1 (2)。", action: () => { newConnections.push({from: currNodeId, to: 'l1-1'}); drawAllConnections(); } },
+        { line: 7, msg: "list1 指针后移。", action: () => { l1Idx++; movePointer('ptr-l1', `l1-${l1Idx}`); document.getElementById('node-l1-1').classList.add('fade-out');} },
+        { line: 13, msg: "curr 往前走。", action: () => { currNodeId = 'l1-1'; movePointer('ptr-curr', currNodeId); } },
+
+        // 比较 4 和 3
+        { line: 4, msg: "继续下一轮比较..." },
+        { line: 5, msg: "比较 list1 (4) 和 list2 (3)。挑 list2。" },
+        { line: 9, msg: "curr.next 指向 list2 (3)。", action: () => { newConnections.push({from: currNodeId, to: 'l2-1'}); drawAllConnections(); } },
+        { line: 10, msg: "list2 指针后移。", action: () => { l2Idx++; movePointer('ptr-l2', `l2-${l2Idx}`); document.getElementById('node-l2-1').classList.add('fade-out');} },
+        { line: 13, msg: "curr 往前走。", action: () => { currNodeId = 'l2-1'; movePointer('ptr-curr', currNodeId); } },
+
+        // 比较 4 和 4
+        { line: 4, msg: "继续下一轮比较..." },
+        { line: 5, msg: "比较 list1 (4) 和 list2 (4)。相等，挑 list1。" },
+        { line: 6, msg: "curr.next 指向 list1 (4)。", action: () => { newConnections.push({from: currNodeId, to: 'l1-2'}); drawAllConnections(); } },
+        { line: 7, msg: "list1 指针后移，此时 list1 变成了 null！", action: () => { movePointer('ptr-l1', null); document.getElementById('node-l1-2').classList.add('fade-out');} },
+        { line: 13, msg: "curr 往前走。", action: () => { currNodeId = 'l1-2'; movePointer('ptr-curr', currNodeId); } },
+
+        // 跳出循环
+        { line: 4, msg: "此时 list1 为 null，不满足循环条件，跳出循环！" },
+        { line: 16, msg: "把剩下的队伍直接接在最后。此时 list2 还有人 (4)，直接接上。", action: () => { newConnections.push({from: currNodeId, to: 'l2-2'}); drawAllConnections(); document.getElementById('node-l2-2').classList.add('fade-out');} },
+
+        // 返回结果
+        { line: 17, msg: "最后一步：返回 dummy.next。也就是真正的排头兵（原来的 list1 第一个节点）。合并完成！🎉" }
+    ];
+
+    nextBtn.addEventListener('click', () => {
+        if (step >= simSteps.length) {
+            explain.innerText = "动画演示已结束，可以通过重置按钮重新开始。";
+            return;
+        }
+
+        const currentObj = simSteps[step];
+        highlightLine(currentObj.line);
+        explain.innerHTML = currentObj.msg;
+        if (currentObj.action) currentObj.action();
+
+        step++;
+        if (step >= simSteps.length) {
+            nextBtn.disabled = true;
+            nextBtn.innerText = "合并完成";
+            document.getElementById('node-dummy').style.opacity = '0.3'; // 弱化 dummy
+        }
+    });
+
+    document.getElementById('resetBtn').addEventListener('click', () => location.reload());
+
+    window.onload = initNodes;
+</script>
+</body>
+</html>

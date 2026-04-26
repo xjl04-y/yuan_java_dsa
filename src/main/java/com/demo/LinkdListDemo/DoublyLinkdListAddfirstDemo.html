@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>双向链表：从零构建与动态网格</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Consolas', 'Courier New', monospace; background-color: #0f172a; color: #e2e8f0; }
+
+        ::-webkit-scrollbar { height: 10px; width: 10px; }
+        ::-webkit-scrollbar-track { background: #1e293b; border-radius: 5px; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 5px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+        /* 内存块样式：绝对定位，平滑过渡 */
+        .memory-block {
+            border: 2px solid #334155;
+            background-color: #1e293b;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+            width: 220px;
+            position: absolute;
+            z-index: 20;
+            transition: left 0.6s cubic-bezier(0.34, 1.56, 0.64, 1), top 0.6s cubic-bezier(0.34, 1.56, 0.64, 1), transform 0.4s, opacity 0.4s;
+        }
+
+        .memory-header {
+            background-color: #334155;
+            color: #94a3b8;
+            font-size: 0.8rem;
+            padding: 6px 10px;
+            border-top-left-radius: 6px;
+            border-top-right-radius: 6px;
+            display: flex;
+            justify-content: space-between;
+            font-weight: bold;
+            transition: background-color 0.5s;
+        }
+
+        .memory-body { display: flex; border-top: 1px solid #0f172a; }
+
+        .mem-cell {
+            flex: 1; padding: 12px 4px; text-align: center; border-right: 1px solid #334155;
+            font-size: 0.85rem; display: flex; flex-direction: column; gap: 6px;
+        }
+        .mem-cell:last-child { border-right: none; }
+
+        .cell-label { font-size: 0.65rem; color: #64748b; text-transform: uppercase; font-weight: bold; }
+        .cell-value { font-weight: bold; color: #f8fafc; transition: color 0.3s; }
+
+        .val-null { color: #ef4444 !important; }
+        .val-addr { color: #38bdf8 !important; }
+        .val-data { color: #22c55e !important; font-size: 1.1rem; }
+
+        /* 闪烁特效 */
+        .flash-update { animation: flashBg 0.8s ease-out; }
+        @keyframes flashBg {
+            0% { background-color: #eab308; color: #000; transform: scale(1.1); }
+            100% { background-color: transparent; transform: scale(1); }
+        }
+
+        /* 代码高亮 */
+        .code-line { padding: 2px 8px; border-left: 3px solid transparent; transition: all 0.3s; }
+        .code-active { background-color: #1e3a8a; border-left-color: #60a5fa; color: #fff; font-weight: bold; }
+
+        /* SVG 线条 */
+        .svg-line {
+            fill: none; stroke-width: 3; stroke-dasharray: 1000; stroke-dashoffset: 1000;
+            animation: drawLine 0.5s forwards; pointer-events: none;
+        }
+        @keyframes drawLine { to { stroke-dashoffset: 0; } }
+
+        #nodesContainer { transition: min-height 0.5s ease; position: relative; width: 100%; }
+    </style>
+</head>
+<body class="h-screen flex flex-col p-2 md:p-4">
+
+<div class="max-w-[1400px] mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 h-full">
+
+    <!-- 左侧：代码与寄存器 -->
+    <div class="flex flex-col lg:col-span-5 gap-3 h-full">
+
+        <!-- 寄存器 (栈内存) -->
+        <div class="bg-slate-800 rounded-xl border border-slate-700 p-4 shadow-lg">
+            <div class="flex justify-between items-end mb-3">
+                <h2 class="text-blue-400 font-bold text-sm">栈内存 (Variables)</h2>
+                <div class="flex gap-2">
+                    <input type="number" id="dataInput" class="w-24 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white focus:border-blue-500 outline-none shadow-inner font-bold" value="88">
+                    <button id="startBtn" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded font-bold transition shadow-lg text-sm">插入新值</button>
+                </div>
+            </div>
+            <div class="space-y-2 font-mono text-sm">
+                <div class="bg-slate-900 border border-slate-600 p-2 rounded flex justify-between items-center shadow-inner">
+                    <span class="text-purple-400 font-bold">head</span>
+                    <span id="reg-head" class="val-null tracking-wider font-bold">null</span>
+                </div>
+                <div class="bg-slate-900 border border-slate-600 p-2 rounded flex justify-between items-center shadow-inner opacity-40 transition-opacity" id="reg-new-container">
+                    <span class="text-orange-400 font-bold">newNode</span>
+                    <span id="reg-new" class="text-slate-500 italic">undefined</span>
+                </div>
+            </div>
+            <button id="nextBtn" class="w-full mt-3 bg-slate-700 text-slate-400 py-2 rounded font-bold transition cursor-not-allowed shadow-md text-sm" disabled>等待启动...</button>
+        </div>
+
+        <!-- 代码执行区 -->
+        <div class="bg-slate-900 rounded-xl border border-slate-700 p-4 flex-grow overflow-y-auto shadow-inner relative">
+            <h2 class="text-slate-400 font-bold mb-2 text-xs uppercase tracking-wider sticky top-0 bg-slate-900 pb-2 z-10">源码分析 (Source Code)</h2>
+            <div class="font-mono text-[13px] text-slate-300 space-y-0.5">
+                <div id="line-0" class="code-line">public void addFirst(int <span class="text-emerald-400">data</span>) {</div>
+                <div id="line-1" class="code-line pl-4 text-slate-500">// 1. 创建并初始化新节点</div>
+                <div id="line-2" class="code-line pl-4"><span class="text-blue-400">Node</span> newNode = new Node(data, null, null);</div>
+                <div id="line-3" class="code-line pl-4 mt-2"><span class="text-yellow-400">if</span> (<span class="text-purple-400">head</span> == <span class="text-red-400">null</span>) {</div>
+                <div id="line-4" class="code-line pl-8 text-slate-500">// 2A. 如果为空，只用单向连接</div>
+                <div id="line-5" class="code-line pl-8">newNode.next = <span class="text-purple-400">head</span>;</div>
+                <div id="line-6" class="code-line pl-8"><span class="text-purple-400">head</span> = newNode;</div>
+                <div id="line-7" class="code-line pl-8">size++;</div>
+                <div id="line-8" class="code-line pl-8"><span class="text-pink-400">return</span>;</div>
+                <div id="line-9" class="code-line pl-4">}</div>
+                <div id="line-10" class="code-line pl-4 mt-2 text-slate-500">// 2B. 不为空，进行双向连接</div>
+                <div id="line-11" class="code-line pl-4">newNode.next = <span class="text-purple-400">head</span>;</div>
+                <div id="line-12" class="code-line pl-4"><span class="text-purple-400">head</span>.prev = newNode;</div>
+                <div id="line-13" class="code-line pl-4"><span class="text-purple-400">head</span> = newNode;</div>
+                <div id="line-14" class="code-line pl-4">size++;</div>
+                <div id="line-15" class="code-line">}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右侧：堆内存 (网格自适应) -->
+    <div class="bg-slate-900 rounded-xl border border-slate-700 lg:col-span-7 relative flex flex-col shadow-2xl overflow-hidden">
+        <div class="p-3 border-b border-slate-800 bg-slate-800/80 flex justify-between items-center z-30">
+            <div class="flex items-center gap-3">
+                <h2 class="font-bold text-slate-200 text-base">堆内存网格</h2>
+                <span id="nodeCount" class="bg-slate-700 text-emerald-400 px-2 py-0.5 rounded-full text-xs font-mono font-bold shadow-inner">0 个节点</span>
+            </div>
+            <p id="explainText" class="text-emerald-400 text-xs font-bold animate-pulse text-right max-w-[250px]">
+                初始状态：head = null。<br>请在左侧输入数据并点击插入！
+            </p>
+        </div>
+
+        <div class="flex-grow overflow-y-auto overflow-x-hidden p-4 relative" id="heapArea">
+            <!-- 空链表提示 -->
+            <div id="emptyState" class="absolute inset-0 flex items-center justify-center text-slate-600 font-bold text-2xl tracking-widest pointer-events-none transition-opacity duration-300">
+                NULL (空链表)
+            </div>
+
+            <div id="nodesContainer" class="relative w-full min-h-[400px]">
+                <!-- SVG 连线层 -->
+                <svg id="svgLines" class="absolute inset-0 w-full h-full pointer-events-none" style="z-index: 10;">
+                    <defs>
+                        <marker id="arrow-next" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M 0 0 L 8 4 L 0 8 Z" fill="#3b82f6" /></marker>
+                        <marker id="arrow-prev" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M 0 0 L 8 4 L 0 8 Z" fill="#ef4444" /></marker>
+                    </defs>
+                </svg>
+                <!-- 节点将在这里动态生成 -->
+            </div>
+        </div>
+
+        <button id="resetSysBtn" class="absolute bottom-4 right-4 bg-red-900/30 hover:bg-red-800/60 border border-red-800/50 px-3 py-1.5 rounded text-xs text-red-300 font-bold transition z-30 shadow-lg">
+            一键清空重置
+        </button>
+    </div>
+</div>
+
+<script>
+    // === 核心数据结构 (初始为空) ===
+    let linkedList = []; // Array of { addr, data }
+    let currentHeadAddr = "null";
+
+    let newAddress = null;
+    let currentData = null;
+    let steps = [];
+    let currentStep = 0;
+    let animationFrameId = null;
+
+    // === DOM 元素 ===
+    const startBtn = document.getElementById('startBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const resetSysBtn = document.getElementById('resetSysBtn');
+    const dataInput = document.getElementById('dataInput');
+    const explainText = document.getElementById('explainText');
+    const nodeCount = document.getElementById('nodeCount');
+    const emptyState = document.getElementById('emptyState');
+
+    const regHead = document.getElementById('reg-head');
+    const regNewCont = document.getElementById('reg-new-container');
+    const regNew = document.getElementById('reg-new');
+
+    const nodesContainer = document.getElementById('nodesContainer');
+    const svgLines = document.getElementById('svgLines');
+    const heapArea = document.getElementById('heapArea');
+
+    // === 生成内存地址 ===
+    function generateUniqueAddress() {
+        let addr;
+        do {
+            addr = "0x" + Math.floor(Math.random() * 4096).toString(16).toUpperCase().padStart(3, '0');
+        } while (linkedList.some(node => node.addr === addr) || addr === newAddress);
+        return addr;
+    }
+
+    // === 布局引擎 (网格重排) ===
+    function updateLayout(isInstant = false) {
+        const containerWidth = heapArea.clientWidth;
+
+        const paddingX = 10; const paddingY = 20;
+        const nodeW = 220; const nodeH = 100;
+        const gapX = 30; const gapY = 80;
+
+        let cols = Math.floor((containerWidth - paddingX * 2 + gapX) / (nodeW + gapX));
+        if (cols < 1) cols = 1;
+
+        // 构造需要布局的虚拟数组 (包含还没并入正式链表的 newAddress)
+        let layoutNodes = [];
+        if (newAddress) {
+            layoutNodes.push({ addr: newAddress });
+        }
+        layoutNodes = layoutNodes.concat(linkedList);
+
+        if (layoutNodes.length > 0) emptyState.style.opacity = '0';
+        else emptyState.style.opacity = '1';
+
+        layoutNodes.forEach((node, index) => {
+            const col = index % cols;
+            const row = Math.floor(index / cols);
+
+            const x = paddingX + col * (nodeW + gapX);
+            const y = paddingY + row * (nodeH + gapY);
+
+            const el = document.getElementById(`node-${node.addr}`);
+            if (el) {
+                if (isInstant) {
+                    el.style.transition = 'none';
+                    el.style.left = `${x}px`;
+                    el.style.top = `${y}px`;
+                    void el.offsetWidth; // force reflow
+                    el.style.transition = 'left 0.6s cubic-bezier(0.34, 1.56, 0.64, 1), top 0.6s cubic-bezier(0.34, 1.56, 0.64, 1), transform 0.4s, opacity 0.4s';
+                } else {
+                    el.style.left = `${x}px`;
+                    el.style.top = `${y}px`;
+                }
+            }
+        });
+
+        const rows = Math.ceil(layoutNodes.length / cols);
+        const totalHeight = paddingY * 2 + rows * nodeH + (rows - 1) * gapY + 50;
+        nodesContainer.style.minHeight = `${totalHeight}px`;
+    }
+
+    // === 节点生成 HTML ===
+    function createNodeHTML(addr, data, prevVal, nextVal, isNew = false) {
+        const borderColor = isNew ? '#f59e0b' : '#334155';
+        const headerColor = isNew ? '#78350f' : '#334155';
+        const addrColor = isNew ? 'text-orange-300' : 'text-blue-300';
+
+        const prevClass = prevVal === 'null' ? 'val-null' : 'val-addr';
+        const nextClass = nextVal === 'null' ? 'val-null' : 'val-addr';
+
+        return `
+                <div id="node-${addr}" class="memory-block ${isNew ? 'scale-95 opacity-0' : ''}" style="border-color: ${borderColor};">
+                    <div class="memory-header" style="background-color: ${headerColor};">
+                        <span>Object: Node</span>
+                        <span class="${addrColor} addr-text">Addr: ${addr}</span>
+                    </div>
+                    <div class="memory-body">
+                        <div class="mem-cell">
+                            <span class="cell-label">.prev</span>
+                            <span class="cell-value ${prevClass}" id="val-${addr}-prev">${prevVal}</span>
+                        </div>
+                        <div class="mem-cell">
+                            <span class="cell-label">.data</span>
+                            <span class="cell-value val-data">${data}</span>
+                        </div>
+                        <div class="mem-cell">
+                            <span class="cell-label">.next</span>
+                            <span class="cell-value ${nextClass}" id="val-${addr}-next">${nextVal}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+    }
+
+    // === 实时寻迹连线引擎 (Tracking Engine) ===
+    // 核心亮点：不再等待动画结束，而是通过 requestAnimationFrame 实时追踪 DOM 元素的真实坐标系画线！
+    function startLineTracking() {
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+
+        function track() {
+            redrawAllLines();
+            animationFrameId = requestAnimationFrame(track);
+        }
+        track();
+    }
+
+    function stopLineTracking() {
+        if (animationFrameId) {
+            cancelAnimationFrame(animationFrameId);
+            animationFrameId = null;
+        }
+        redrawAllLines(); // 确保最后画一次
+    }
+
+    function redrawAllLines() {
+        Array.from(svgLines.children).forEach(child => {
+            if (child.tagName !== 'defs') child.remove();
+        });
+
+        // 扫描 DOM 中所有存在的节点的 next 和 prev 字段
+        const blocks = document.querySelectorAll('.memory-block');
+        blocks.forEach(block => {
+            const addr = block.id.replace('node-', '');
+
+            const nextCell = document.getElementById(`val-${addr}-next`);
+            if (nextCell && nextCell.innerText.startsWith('0x')) {
+                drawConnectingLine(nextCell, `node-${nextCell.innerText}`, 'next');
+            }
+
+            const prevCell = document.getElementById(`val-${addr}-prev`);
+            if (prevCell && prevCell.innerText.startsWith('0x')) {
+                drawConnectingLine(prevCell, `node-${prevCell.innerText}`, 'prev');
+            }
+        });
+    }
+
+    function drawConnectingLine(fromCellEl, toBlockId, type) {
+        const toBlock = document.getElementById(toBlockId);
+        if (!fromCellEl || !toBlock) return;
+
+        // 获取相对于 nodesContainer 的位置，完美适配滚动和移动
+        const fromRect = fromCellEl.getBoundingClientRect();
+        const toRect = toBlock.getBoundingClientRect();
+        const containerRect = nodesContainer.getBoundingClientRect();
+
+        const startX = fromRect.left - containerRect.left + fromRect.width / 2;
+        const startY = fromRect.top - containerRect.top; // cell top
+
+        const endX = toRect.left - containerRect.left + toRect.width / 2;
+        const endY = toRect.top - containerRect.top; // block top
+
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        let d = '';
+
+        // S 型曲线
+        if (type === 'next') {
+            const cp1Y = startY - 45;
+            const cp2Y = endY - 45;
+            d = `M ${startX} ${startY} C ${startX} ${cp1Y}, ${endX} ${cp2Y}, ${endX} ${endY - 6}`;
+            path.setAttribute('stroke', '#3b82f6');
+            path.setAttribute('marker-end', 'url(#arrow-next)');
+        } else {
+            const startYBottom = fromRect.bottom - containerRect.top;
+            const endYBottom = toRect.bottom - containerRect.top;
+            const cp1Y = startYBottom + 45;
+            const cp2Y = endYBottom + 45;
+            d = `M ${startX} ${startYBottom} C ${startX} ${cp1Y}, ${endX} ${cp2Y}, ${endX} ${endYBottom + 6}`;
+            path.setAttribute('stroke', '#ef4444');
+            path.setAttribute('marker-end', 'url(#arrow-prev)');
+        }
+
+        path.setAttribute('d', d);
+        path.setAttribute('class', 'svg-line'); // 依然保留短暂的 draw 动画
+        svgLines.appendChild(path);
+    }
+
+    // === 工具函数 ===
+    function updateExplain(text) {
+        explainText.innerHTML = text;
+        explainText.classList.remove('animate-pulse');
+        void explainText.offsetWidth;
+        explainText.classList.add('animate-pulse');
+    }
+
+    function highlightLine(lineIndex) {
+        document.querySelectorAll('.code-line').forEach(el => el.classList.remove('code-active'));
+        if (lineIndex >= 0) {
+            const el = document.getElementById(`line-${lineIndex}`);
+            if (el) {
+                el.classList.add('code-active');
+                // el.scrollIntoView({ behavior: 'smooth', block: 'center' }); // 取消自动滚动防止干扰
+            }
+        }
+    }
+
+    function flashElement(id, newValue, colorClass) {
+        const el = document.getElementById(id);
+        if (!el) return;
+
+        if (newValue !== undefined) {
+            el.innerText = newValue;
+            el.className = `cell-value ${colorClass}`;
+        }
+        if (id.startsWith('reg-')) {
+            el.className = `tracking-wider font-bold ${newValue === 'null' ? 'val-null' : 'val-addr text-lg'}`;
+        }
+
+        el.classList.remove('flash-update');
+        void el.offsetWidth;
+        el.classList.add('flash-update');
+    }
+
+    // === 剧本执行流程 (分支逻辑) ===
+    function buildSteps() {
+        steps = [];
+        const isEmpty = (linkedList.length === 0);
+
+        // 公共 Step 1: new Node()
+        steps.push({
+            action: () => {
+                highlightLine(2);
+                updateExplain(`动作：<b>分配内存。</b><br>申请了地址 <b>${newAddress}</b>。如果内存中有旧节点，它们正在被推向后方！`);
+
+                regNewCont.classList.remove('opacity-40');
+                flashElement('reg-new', newAddress, 'val-addr');
+
+                const newBlockHTML = createNodeHTML(newAddress, currentData, 'null', 'null', true);
+                nodesContainer.insertAdjacentHTML('beforeend', newBlockHTML);
+
+                // 启动连线追踪器和布局引擎
+                startLineTracking();
+                updateLayout();
+
+                setTimeout(() => {
+                    const newBlock = document.getElementById(`node-${newAddress}`);
+                    if(newBlock) {
+                        newBlock.classList.remove('scale-95', 'opacity-0');
+                        newBlock.classList.add('scale-100', 'opacity-100');
+                    }
+                    heapArea.scrollTo({ top: 0, behavior: 'smooth' });
+                }, 50);
+
+                // 600ms 动画结束后停止追踪以节省性能
+                setTimeout(stopLineTracking, 650);
+            }
+        });
+
+        // 公共 Step 2: if (head == null)
+        steps.push({
+            action: () => {
+                highlightLine(3);
+                if (isEmpty) {
+                    updateExplain(`判断条件成立！当前 <span class="text-purple-400">head</span> 的值确实是 <b>null</b>。<br>准备进入空链表处理分支。`);
+                } else {
+                    updateExplain(`判断条件不成立。<span class="text-purple-400">head</span> 当前指向 ${currentHeadAddr}。<br>跳过 if，进入 else 双向链接分支。`);
+                }
+            }
+        });
+
+        if (isEmpty) {
+            // === 空链表分支 ===
+            steps.push({
+                action: () => {
+                    highlightLine(5);
+                    updateExplain(`动作：<b>单向链接。</b><br>将 head 里的 null 填入新节点的 <b>next</b>。`);
+                    flashElement(`val-${newAddress}-next`, 'null', 'val-null');
+                    flashElement('reg-head');
+                    redrawAllLines();
+                }
+            });
+            steps.push({
+                action: () => {
+                    highlightLine(6);
+                    updateExplain(`动作：<b>首领就位！</b><br>head 大管家指向 ${newAddress}。链表诞生了第一个节点！`);
+                    flashElement('reg-head', newAddress, 'val-addr');
+                    commitInsertion();
+                }
+            });
+            steps.push({
+                action: () => {
+                    highlightLine(8);
+                    updateExplain(`执行 return。首次插入完美收官！<br>请修改数据，再插入一次看看！`);
+                    finishInsertion();
+                }
+            });
+        } else {
+            // === 非空链表分支 ===
+            steps.push({
+                action: () => {
+                    highlightLine(11);
+                    updateExplain(`动作：<b>新连旧 (拷贝地址)</b><br>把旧首领地址 (${currentHeadAddr}) 填入 ${newAddress} 的 <b>next</b>。`);
+                    flashElement(`val-${newAddress}-next`, currentHeadAddr, 'val-addr');
+                    flashElement('reg-head');
+                    redrawAllLines();
+                }
+            });
+            steps.push({
+                action: () => {
+                    highlightLine(12);
+                    updateExplain(`动作：<b>旧连新 (反向建立)</b><br>旧首领 (${currentHeadAddr}) 的 <b>prev</b> 格子填入新地址 ${newAddress}。`);
+                    flashElement(`val-${currentHeadAddr}-prev`, newAddress, 'val-addr');
+                    flashElement('reg-new');
+                    redrawAllLines();
+                }
+            });
+            steps.push({
+                action: () => {
+                    highlightLine(13);
+                    updateExplain(`动作：<b>更新入口！</b><br>head 变量更新为 ${newAddress}。权力交接完毕！`);
+                    flashElement('reg-head', newAddress, 'val-addr');
+                    commitInsertion();
+                }
+            });
+            steps.push({
+                action: () => {
+                    highlightLine(-1);
+                    updateExplain(`✅ 双向链接完成！旧节点被成功向后推移！`);
+                    finishInsertion();
+                }
+            });
+        }
+    }
+
+    // === 状态提交与收尾 ===
+    function commitInsertion() {
+        const newBlock = document.getElementById(`node-${newAddress}`);
+        newBlock.style.borderColor = '#334155';
+        newBlock.querySelector('.memory-header').style.backgroundColor = '#334155';
+        newBlock.querySelector('.addr-text').className = 'text-blue-300 addr-text';
+
+        linkedList.unshift({ addr: newAddress, data: currentData });
+        currentHeadAddr = newAddress;
+        nodeCount.innerText = `${linkedList.length} 个节点`;
+    }
+
+    function finishInsertion() {
+        nextBtn.innerText = "完成当前插入";
+        nextBtn.disabled = true;
+        nextBtn.className = "w-full bg-slate-700 text-slate-400 py-2 rounded font-bold transition cursor-not-allowed shadow-md text-sm";
+        startBtn.disabled = false;
+
+        dataInput.value = Math.floor(Math.random() * 100);
+        newAddress = null;
+    }
+
+    // === 交互事件 ===
+    startBtn.addEventListener('click', () => {
+        const val = parseInt(dataInput.value);
+        if(isNaN(val)) return alert("请输入有效数字");
+
+        currentData = val;
+        newAddress = generateUniqueAddress();
+        currentStep = 0;
+        buildSteps();
+
+        startBtn.disabled = true;
+        nextBtn.disabled = false;
+        nextBtn.className = "w-full mt-3 bg-emerald-600 hover:bg-emerald-500 text-white py-2 rounded font-bold shadow-[0_0_15px_rgba(16,185,129,0.4)] transition transform hover:scale-[1.02] active:scale-95 text-sm";
+        nextBtn.innerHTML = "执行下一步 <svg class='w-4 h-4 inline -mt-0.5' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M13 5l7 7-7 7M5 5l7 7-7 7'></path></svg>";
+
+        updateExplain("新节点就绪。点击“执行下一步”开始跟踪代码！");
+    });
+
+    nextBtn.addEventListener('click', () => {
+        if (currentStep < steps.length) {
+            steps[currentStep].action();
+            currentStep++;
+        }
+    });
+
+    resetSysBtn.addEventListener('click', () => {
+        if(confirm("确定要释放所有内存，回到完全空白的状态吗？")) {
+            linkedList = [];
+            currentHeadAddr = "null";
+            newAddress = null;
+
+            regHead.innerText = 'null';
+            regHead.className = 'val-null tracking-wider font-bold';
+            regNewCont.classList.add('opacity-40');
+            regNew.innerText = 'undefined';
+
+            nodesContainer.innerHTML = `
+                    <svg id="svgLines" class="absolute inset-0 w-full h-full pointer-events-none" style="z-index: 10;">
+                        <defs>
+                            <marker id="arrow-next" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M 0 0 L 8 4 L 0 8 Z" fill="#3b82f6" /></marker>
+                            <marker id="arrow-prev" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M 0 0 L 8 4 L 0 8 Z" fill="#ef4444" /></marker>
+                        </defs>
+                    </svg>
+                `;
+            nodeCount.innerText = `0 个节点`;
+            updateLayout(true);
+            highlightLine(-1);
+
+            startBtn.disabled = false;
+            nextBtn.disabled = true;
+            nextBtn.innerText = "等待启动...";
+            nextBtn.className = "w-full mt-3 bg-slate-700 text-slate-400 py-2 rounded font-bold transition cursor-not-allowed shadow-md text-sm";
+
+            updateExplain("一切归零。head = null。");
+        }
+    });
+
+    // 窗口防抖调整尺寸
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+            updateLayout();
+            redrawAllLines();
+        }, 150);
+    });
+
+</script>
+</body>
+</html>

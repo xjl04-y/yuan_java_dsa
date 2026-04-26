@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>链表反转极致动画演示</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+
+        /* 隐藏滚动条但保留滚动功能 */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        .node {
+            transition: all 0.3s ease;
+            position: relative;
+            z-index: 20;
+        }
+
+        .null-node {
+            border: 2px dashed #9ca3af;
+            color: #9ca3af;
+            background: #f9fafb;
+        }
+
+        /* 连线动画 */
+        .pointer-arrow {
+            transition: all 0.5s ease-in-out;
+            stroke-dasharray: 1000;
+            stroke-dashoffset: 0;
+            animation: drawLine 0.8s ease-out forwards;
+        }
+        @keyframes drawLine {
+            from { stroke-dashoffset: 1000; }
+            to { stroke-dashoffset: 0; }
+        }
+
+        /* 代码高亮 */
+        .highlight-code {
+            background-color: #fde68a;
+            color: #111827 !important;
+            font-weight: 700;
+            border-left: 4px solid #f59e0b;
+            padding-left: 12px !important;
+            transition: all 0.2s;
+        }
+
+        /* 移动的指针标签 */
+        .pointer-tag {
+            position: absolute;
+            transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); /* 弹簧效果 */
+            z-index: 50;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            opacity: 0; /* 初始隐藏 */
+            pointer-events: none;
+        }
+
+        .pointer-tag.active {
+            opacity: 1;
+        }
+
+        /* 避免 SVG 挡住操作 */
+        svg { pointer-events: none; }
+    </style>
+</head>
+<body class="bg-gray-100 h-screen flex flex-col p-2 md:p-6">
+
+<div class="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-6 h-full">
+
+    <!-- 左侧：代码区 -->
+    <div class="bg-white rounded-xl shadow-lg flex flex-col lg:col-span-4 border border-gray-200 overflow-hidden">
+        <div class="p-4 bg-gray-50 border-b border-gray-200">
+            <h1 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+                <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
+                反转链表：看清每一步
+            </h1>
+        </div>
+
+        <div class="bg-gray-900 text-gray-300 p-4 font-mono text-[13px] sm:text-sm leading-loose overflow-y-auto flex-grow">
+            <div id="line-0" class="pl-2">public void Inversion() {</div>
+            <div id="line-1" class="pl-6">if (head == null) return;</div>
+            <div id="line-2" class="pl-6 text-green-400">// 初始化变量</div>
+            <div id="line-3" class="pl-6"><span class="text-blue-300">Node</span> curr = <span class="text-purple-400">this.head</span>;</div>
+            <div id="line-4" class="pl-6"><span class="text-blue-300">Node</span> prev = <span class="text-red-400">null</span>;</div>
+            <div id="line-5" class="pl-6 mt-2 text-green-400">// 开始遍历</div>
+            <div id="line-6" class="pl-6"><span class="text-yellow-300">while</span> (curr != <span class="text-red-400">null</span>) {</div>
+            <div id="line-7" class="pl-10 text-green-400">// 1. 救下未来</div>
+            <div id="line-8" class="pl-10"><span class="text-blue-300">Node</span> next = curr.next;</div>
+            <div id="line-9" class="pl-10 text-green-400">// 2. 现在转身（断开旧线，连新线）</div>
+            <div id="line-10" class="pl-10 font-bold text-white">curr.next = prev;</div>
+            <div id="line-11" class="pl-10 text-green-400">// 3. "过去"走到"现在"的位置</div>
+            <div id="line-12" class="pl-10 font-bold text-white bg-red-900/30">prev = curr;</div>
+            <div id="line-13" class="pl-10 text-green-400">// 4. "现在"走向"未来"的位置</div>
+            <div id="line-14" class="pl-10 font-bold text-white bg-green-900/30">curr = next;</div>
+            <div id="line-15" class="pl-6">}</div>
+            <div id="line-16" class="pl-6 mt-2 text-green-400">// 收尾，指定新队伍的头</div>
+            <div id="line-17" class="pl-6"><span class="text-purple-400">this.head</span> = prev;</div>
+            <div id="line-18" class="pl-2">}</div>
+        </div>
+
+        <!-- 控制按钮 -->
+        <div class="p-4 bg-gray-50 border-t border-gray-200 flex flex-col gap-3">
+            <div id="statusText" class="text-sm font-semibold text-blue-800 bg-blue-100 p-3 rounded-lg text-center min-h-[3rem] flex items-center justify-center">
+                准备就绪，请点击“下一步”
+            </div>
+            <div class="flex gap-2">
+                <button id="resetBtn" class="flex-1 py-2.5 bg-gray-200 text-gray-700 rounded-lg font-bold hover:bg-gray-300 transition-colors shadow-sm">
+                    重置
+                </button>
+                <button id="nextBtn" class="flex-[2] py-2.5 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-colors shadow-sm flex justify-center items-center gap-2">
+                    下一步 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右侧：动态内存视图 -->
+    <div class="bg-white rounded-xl shadow-lg flex flex-col lg:col-span-8 border border-gray-200 relative overflow-hidden">
+        <div class="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+            <h2 class="text-lg font-bold text-gray-800">内存可视化区域</h2>
+            <div class="flex gap-4 text-xs font-bold">
+                <span class="flex items-center gap-1 text-gray-500"><div class="w-3 h-0.5 bg-gray-400"></div> 原有指向</span>
+                <span class="flex items-center gap-1 text-red-500"><div class="w-3 h-0.5 bg-red-500"></div> 反转指向</span>
+            </div>
+        </div>
+
+        <!-- 可滚动画布区 -->
+        <div class="flex-grow overflow-x-auto relative no-scrollbar" id="canvasScroll">
+            <div id="canvasArea" class="absolute inset-0 min-w-[800px] min-h-[400px] p-8">
+
+                <!-- 动态悬浮指针标签 -->
+                <div id="ptr-head" class="pointer-tag">
+                    <div class="bg-purple-100 text-purple-700 px-3 py-1 rounded-md text-sm font-black border-2 border-purple-400 shadow-md">head</div>
+                    <div class="h-6 w-1 bg-purple-400 rounded-b"></div>
+                </div>
+
+                <div id="ptr-prev" class="pointer-tag mt-20"> <!-- 往下偏移一点防重叠 -->
+                    <div class="h-6 w-1 bg-red-400 rounded-t"></div>
+                    <div class="bg-red-100 text-red-700 px-3 py-1 rounded-md text-sm font-black border-2 border-red-400 shadow-md">prev (过去)</div>
+                </div>
+
+                <div id="ptr-curr" class="pointer-tag mt-20">
+                    <div class="h-6 w-1 bg-green-400 rounded-t"></div>
+                    <div class="bg-green-100 text-green-700 px-3 py-1 rounded-md text-sm font-black border-2 border-green-400 shadow-md">curr (现在)</div>
+                </div>
+
+                <div id="ptr-next" class="pointer-tag mt-20">
+                    <div class="h-6 w-1 bg-blue-400 rounded-t"></div>
+                    <div class="bg-blue-100 text-blue-700 px-3 py-1 rounded-md text-sm font-black border-2 border-blue-400 shadow-md">next (未来)</div>
+                </div>
+
+                <!-- SVG 连线层 -->
+                <svg id="svgLayer" class="absolute inset-0 w-full h-full" style="z-index: 10;">
+                    <defs>
+                        <marker id="arrow-gray" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#9ca3af" /></marker>
+                        <marker id="arrow-red" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#ef4444" /></marker>
+                    </defs>
+                </svg>
+
+                <!-- 节点实体层 -->
+                <div id="nodesContainer" class="absolute top-[40%] left-0 w-full flex items-center justify-between px-10 gap-8" style="transform: translateY(-50%);">
+                    <!-- 节点由 JS 生成 -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 解释面板 -->
+        <div id="explainPanel" class="absolute bottom-4 left-4 right-4 bg-white/90 backdrop-blur border-2 border-blue-200 p-4 rounded-xl shadow-xl transition-all duration-300 transform translate-y-2 opacity-0 text-gray-700 font-medium text-sm">
+            <!-- 动态解说文字 -->
+        </div>
+    </div>
+</div>
+
+<script>
+    // 核心数据模型 (增加到了 4 个节点)
+    const nodesData = [
+        { id: 'node-null-left', val: 'null', isNull: true },
+        { id: 'node-10', val: 10 },
+        { id: 'node-20', val: 20 },
+        { id: 'node-30', val: 30 },
+        { id: 'node-40', val: 40 },
+        { id: 'node-null-right', val: 'null', isNull: true }
+    ];
+
+    // 初始物理连线规则
+    const initialLinks = [
+        { from: 'node-10', to: 'node-20' },
+        { from: 'node-20', to: 'node-30' },
+        { from: 'node-30', to: 'node-40' },
+        { from: 'node-40', to: 'node-null-right' }
+    ];
+
+    // DOM 元素引用
+    const nodesContainer = document.getElementById('nodesContainer');
+    const svgLayer = document.getElementById('svgLayer');
+    const nextBtn = document.getElementById('nextBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const statusText = document.getElementById('statusText');
+    const explainPanel = document.getElementById('explainPanel');
+
+    // 生成执行步骤剧本
+    let STEPS = [];
+    function generateSteps() {
+        STEPS = [];
+        // 初始化
+        STEPS.push({ line: 3, status: "初始化: 找到队伍的头", detail: "curr 标签贴到了头节点 [10] 上。", action: () => movePointer('curr', 'node-10', 'bottom') });
+        STEPS.push({ line: 4, status: "初始化: 设定'过去'", detail: "因为反转后，原本的头会变成尾巴，而尾巴必须指向 null，所以 prev 一开始在左侧的 null 处等候。", action: () => movePointer('prev', 'node-null-left', 'bottom') });
+
+        const vals = [10, 20, 30, 40];
+
+        for (let i = 0; i < vals.length; i++) {
+            let currVal = vals[i];
+            let nextVal = vals[i+1] || null;
+            let currId = `node-${currVal}`;
+            let nextId = nextVal ? `node-${nextVal}` : `node-null-right`;
+            let prevId = i === 0 ? `node-null-left` : `node-${vals[i-1]}`;
+
+            STEPS.push({ line: 6, status: `第 ${i+1} 轮: 检查 curr`, detail: `curr 贴在 [${currVal}] 上，不是 null，允许进入循环！`, action: () => {} });
+
+            // 1. next = curr.next
+            STEPS.push({
+                line: 8,
+                status: `派分身记住未来`,
+                detail: `执行 next = curr.next。<br>看！<strong class="text-blue-600">next 标签</strong>飞到了当前节点 [${currVal}] 的下一个节点那里。这样一来，就算一会前面的线断了，我们也不会走丢。`,
+                action: () => movePointer('next', nextId, 'bottom')
+            });
+
+            // 2. curr.next = prev
+            STEPS.push({
+                line: 10,
+                status: `核心动作：转身反指！`,
+                detail: `执行 curr.next = prev。<br><strong class="text-green-600">当前节点 [${currVal}]</strong> 断开了向右的连线，转过身去，指向了 <strong class="text-red-600">prev 标签</strong> 所在的节点！`,
+                action: () => {
+                    removeLine(currId, nextId);
+                    drawReversedLine(currId, prevId);
+                    document.getElementById(currId).classList.add('ring-4', 'ring-red-400');
+                }
+            });
+
+            // 3. prev = curr (重点演示)
+            STEPS.push({
+                line: 12,
+                status: `角色移动：过去=现在`,
+                detail: `执行 prev = curr。<br>这行代码的意思是：“让 prev 标签飞到 curr 标签目前所在的节点上”。<br>看！<strong class="text-red-600">prev 标签</strong> 贴到了 [${currVal}] 上，它变成了下一轮循环的“过去”。`,
+                action: () => {
+                    document.getElementById(currId).classList.remove('ring-4', 'ring-red-400');
+                    movePointer('prev', currId, 'bottom');
+                }
+            });
+
+            // 4. curr = next (重点演示)
+            STEPS.push({
+                line: 14,
+                status: `角色移动：现在=未来`,
+                detail: `执行 curr = next。<br>同理，“让 curr 标签飞到 next 标签所在的节点上”。<br>看！<strong class="text-green-600">curr 标签</strong> 飞到了那个被提前保护起来的未来节点上，准备开始下一轮转身。`,
+                action: () => movePointer('curr', nextId, 'bottom')
+            });
+        }
+
+        // 循环结束
+        STEPS.push({ line: 6, status: `结束循环`, detail: `此时 curr 标签已经飞到了右侧的 null 上，条件不成立，退出 while 循环。`, action: () => {} });
+
+        // head = prev
+        STEPS.push({
+            line: 17,
+            status: `重新指定头节点`,
+            detail: `执行 this.head = prev。<br>因为 prev 停在了原链表的最后一个节点 [40] 上，它理所当然成为了新链表的头。<strong class="text-purple-600">head 标签</strong>飞过去盖章！大功告成！🎉`,
+            action: () => {
+                movePointer('head', `node-${vals[vals.length-1]}`, 'top');
+                document.getElementById(`node-${vals[vals.length-1]}`).classList.add('ring-4', 'ring-purple-500', 'bg-purple-50');
+            }
+        });
+    }
+
+    let currentStepIndex = -1;
+
+    // 初始化渲染画布
+    function initCanvas() {
+        nodesContainer.innerHTML = '';
+        // 清理并保留 defs
+        Array.from(svgLayer.children).forEach(child => {
+            if(child.tagName !== 'defs') child.remove();
+        });
+
+        // 生成 HTML 节点
+        nodesData.forEach(item => {
+            const div = document.createElement('div');
+            div.id = item.id;
+            if (item.isNull) {
+                div.className = 'node null-node w-16 h-16 rounded-lg flex items-center justify-center font-mono font-bold shadow-sm flex-shrink-0';
+                div.innerText = 'NULL';
+            } else {
+                div.className = 'node w-16 h-16 rounded-full bg-white border-4 border-gray-800 flex items-center justify-center text-xl font-bold text-gray-800 shadow-lg flex-shrink-0 relative';
+                div.innerText = item.val;
+            }
+            nodesContainer.appendChild(div);
+        });
+
+        // 隐藏所有指针，重置头部指针位置
+        ['head', 'prev', 'curr', 'next'].forEach(id => {
+            const el = document.getElementById(`ptr-${id}`);
+            el.classList.remove('active');
+        });
+
+        // 延迟画初始连线（等 DOM 渲染完获取坐标）
+        setTimeout(() => {
+            initialLinks.forEach(link => drawOriginalLine(link.from, link.to));
+            // 初始时 head 在 10 上
+            movePointer('head', 'node-10', 'top');
+            document.getElementById('ptr-head').classList.add('active');
+        }, 100);
+
+        generateSteps();
+        currentStepIndex = -1;
+        statusText.innerText = "准备就绪，请点击“下一步”";
+        clearHighlight();
+        explainPanel.style.opacity = '0';
+        explainPanel.style.transform = 'translateY(10px)';
+
+        nextBtn.disabled = false;
+        nextBtn.innerHTML = '下一步 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>';
+        nextBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+    }
+
+    // 移动指针标签的核心逻辑
+    function movePointer(ptrType, targetNodeId, position) {
+        const ptrEl = document.getElementById(`ptr-${ptrType}`);
+        const targetEl = document.getElementById(targetNodeId);
+        if (!ptrEl || !targetEl) return;
+
+        ptrEl.classList.add('active'); // 确保可见
+
+        const containerRect = document.getElementById('canvasArea').getBoundingClientRect();
+        const targetRect = targetEl.getBoundingClientRect();
+
+        // 计算目标中心 X
+        const targetCenterX = targetRect.left - containerRect.left + targetRect.width / 2;
+
+        // X 轴居中对齐标签
+        ptrEl.style.left = `${targetCenterX - ptrEl.offsetWidth / 2}px`;
+
+        // Y 轴处理
+        if (position === 'top') {
+            ptrEl.style.top = `${targetRect.top - containerRect.top - ptrEl.offsetHeight - 8}px`;
+        } else {
+            // bottom
+            // 为了防止 prev, curr, next 重叠，给它们设置不同的垂直偏移
+            let offset = 8;
+            if(ptrType === 'prev') offset = 10;
+            if(ptrType === 'curr') offset = 65; // curr 放低一点
+            if(ptrType === 'next') offset = 120; // next 放更低
+
+            ptrEl.style.top = `${targetRect.bottom - containerRect.top + offset}px`;
+        }
+
+        // 如果节点在视口外，自动滚动
+        const scrollArea = document.getElementById('canvasScroll');
+        const ptrLeftRelToScroll = targetRect.left - scrollArea.getBoundingClientRect().left;
+        if (ptrLeftRelToScroll > scrollArea.clientWidth - 100) {
+            scrollArea.scrollBy({ left: 200, behavior: 'smooth' });
+        } else if (ptrLeftRelToScroll < 100) {
+            scrollArea.scrollBy({ left: -200, behavior: 'smooth' });
+        }
+    }
+
+    // 画原有向右连线
+    function drawOriginalLine(fromId, toId) {
+        const {fromX, fromY, toX, toY, r} = getPoints(fromId, toId);
+        if(!fromX) return;
+
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', fromX + r);
+        line.setAttribute('y1', fromY);
+        line.setAttribute('x2', toX - r - 8);
+        line.setAttribute('y2', toY);
+        line.setAttribute('stroke', '#9ca3af'); // gray-400
+        line.setAttribute('stroke-width', '4');
+        line.setAttribute('marker-end', 'url(#arrow-gray)');
+        line.id = `line-${fromId}-${toId}`;
+        svgLayer.appendChild(line);
+    }
+
+    // 画反转向左弧线
+    function drawReversedLine(fromId, toId) {
+        const {fromX, fromY, toX, toY, r} = getPoints(fromId, toId);
+        if(!fromX) return;
+
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+
+        // 从上方绕过，形成优美的弧线
+        const startX = fromX;
+        const startY = fromY - r;
+        const endX = toX;
+        const endY = toY - r - 8;
+
+        // 控制点向上提，节点间距越大，提得越高
+        const distance = Math.abs(startX - endX);
+        const controlY = startY - (distance * 0.4) - 30;
+
+        const d = `M ${startX} ${startY} Q ${(startX+endX)/2} ${controlY} ${endX} ${endY}`;
+
+        path.setAttribute('d', d);
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', '#ef4444'); // red-500
+        path.setAttribute('stroke-width', '4');
+        path.setAttribute('stroke-dasharray', '8,4'); // 虚线效果更明显
+        path.setAttribute('marker-end', 'url(#arrow-red)');
+        path.className.baseVal = 'pointer-arrow';
+        path.id = `rev-line-${fromId}`;
+        svgLayer.appendChild(path);
+    }
+
+    function removeLine(fromId, toId) {
+        const line = document.getElementById(`line-${fromId}-${toId}`);
+        if (line) line.remove();
+    }
+
+    function getPoints(fromId, toId) {
+        const fromEl = document.getElementById(fromId);
+        const toEl = document.getElementById(toId);
+        if (!fromEl || !toEl) return {};
+
+        const containerRect = document.getElementById('canvasArea').getBoundingClientRect();
+        const fromRect = fromEl.getBoundingClientRect();
+        const toRect = toEl.getBoundingClientRect();
+
+        return {
+            fromX: fromRect.left - containerRect.left + fromRect.width / 2,
+            fromY: fromRect.top - containerRect.top + fromRect.height / 2,
+            toX: toRect.left - containerRect.left + toRect.width / 2,
+            toY: toRect.top - containerRect.top + toRect.height / 2,
+            r: 32 // node radius approx
+        };
+    }
+
+    // 代码高亮
+    function highlightLine(lineNum) {
+        clearHighlight();
+        const lineEl = document.getElementById(`line-${lineNum}`);
+        if (lineEl) {
+            lineEl.classList.add('highlight-code');
+            lineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }
+
+    function clearHighlight() {
+        for (let i = 0; i <= 18; i++) {
+            const el = document.getElementById(`line-${i}`);
+            if (el) el.classList.remove('highlight-code');
+        }
+    }
+
+    // 显示解说面板
+    function showExplain(title, detail) {
+        explainPanel.innerHTML = `<h3 class="text-blue-700 font-bold mb-1">${title}</h3><p>${detail}</p>`;
+        explainPanel.style.opacity = '1';
+        explainPanel.style.transform = 'translateY(0)';
+    }
+
+    // 执行下一步
+    function nextStep() {
+        currentStepIndex++;
+        if (currentStepIndex >= STEPS.length) {
+            statusText.innerText = "演示结束！";
+            nextBtn.disabled = true;
+            nextBtn.innerText = "已完成";
+            nextBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            return;
+        }
+
+        const step = STEPS[currentStepIndex];
+
+        highlightLine(step.line);
+        statusText.innerText = step.status;
+
+        if(step.detail) {
+            showExplain(`代码行 ${step.line}: ${step.status}`, step.detail);
+        }
+
+        // 执行核心动作（指针移动或连线变化）
+        if(step.action) step.action();
+    }
+
+    // 绑定事件
+    nextBtn.addEventListener('click', nextStep);
+    resetBtn.addEventListener('click', initCanvas);
+    window.addEventListener('resize', initCanvas); // 窗口改变时重绘保证坐标正确
+
+    // 启动
+    window.onload = initCanvas;
+
+</script>
+</body>
+</html>

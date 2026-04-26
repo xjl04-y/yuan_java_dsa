@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>双向链表：赋值顺序与内存快照</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Consolas', monospace; background-color: #0f172a; color: #e2e8f0; }
+        .memory-block {
+            border: 2px solid #334155; background-color: #1e293b; border-radius: 8px;
+            width: 200px; transition: all 0.5s ease; position: relative; z-index: 20;
+        }
+        .mem-cell { padding: 8px; text-align: center; border-bottom: 1px solid #334155; font-size: 0.8rem; }
+        .mem-cell:last-child { border-bottom: none; }
+        .cell-label { font-size: 0.6rem; color: #64748b; text-transform: uppercase; font-weight: bold; }
+        .cell-value { font-weight: bold; font-family: 'Fira Code', monospace; }
+        .val-addr { color: #38bdf8; }
+        .val-null { color: #ef4444; }
+        .val-data { color: #22c55e; }
+
+        .code-line { padding: 8px 12px; border-left: 4px solid transparent; transition: all 0.2s; font-size: 0.85rem; border-radius: 0 8px 8px 0; }
+        .code-active { background-color: #1e3a8a; border-left-color: #60a5fa; color: #fff; font-weight: bold; }
+
+        .timeline-step { border-left: 2px dashed #475569; padding-left: 1.5rem; position: relative; margin-bottom: 1.5rem; opacity: 0.4; transition: opacity 0.3s; }
+        .timeline-step.active { opacity: 1; border-left-color: #3b82f6; }
+        .timeline-step::before { content: ''; position: absolute; left: -6px; top: 0; width: 10px; height: 10px; border-radius: 50%; background: #475569; }
+        .timeline-step.active::before { background: #3b82f6; box-shadow: 0 0 10px #3b82f6; }
+
+        svg { pointer-events: none; position: absolute; inset: 0; width: 100%; height: 100%; z-index: 10; }
+        .link-line { fill: none; stroke-width: 2.5; stroke-dasharray: 1000; stroke-dashoffset: 1000; animation: draw 0.6s forwards; }
+        @keyframes draw { to { stroke-dashoffset: 0; } }
+
+        .highlight-part { color: #fbbf24; text-decoration: underline; }
+    </style>
+</head>
+<body class="h-screen flex flex-col p-4 overflow-hidden">
+
+    <div class="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-6 h-full">
+
+        <!-- 左侧：执行时间轴 -->
+        <div class="flex flex-col lg:col-span-5 gap-4 h-full">
+            <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl">
+                <h2 class="text-blue-400 font-bold mb-4">CPU 执行时间轴</h2>
+                <div class="flex gap-2">
+                    <button id="nextBtn" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-lg font-bold transition shadow-lg flex items-center justify-center gap-2">
+                        执行下一步指令
+                    </button>
+                    <button id="resetBtn" class="px-4 bg-slate-700 text-slate-300 rounded-lg font-bold hover:bg-slate-600">重置</button>
+                </div>
+            </div>
+
+            <!-- 详细执行步骤 -->
+            <div class="bg-slate-900 p-6 rounded-2xl border border-slate-700 flex-grow overflow-y-auto no-scrollbar">
+                <div id="step-0" class="timeline-step active">
+                    <p class="text-xs font-bold text-slate-500 uppercase">Step 0: 初始状态</p>
+                    <p class="text-sm mt-1">此时 <span class="text-purple-400">curr.next</span> 存储的是 0x200。</p>
+                </div>
+
+                <div id="step-1" class="timeline-step">
+                    <p class="text-xs font-bold text-slate-500 uppercase">Step 1: 参数快照 (Right Side)</p>
+                    <div class="code-line bg-slate-800/50 mt-1">new Node(99, <span class="highlight-part">curr.next</span>, curr)</div>
+                    <p class="text-sm mt-1">CPU 读取 <span class="highlight-part">curr.next</span>。拿到值：<b class="text-blue-400">0x200</b>。</p>
+                </div>
+
+                <div id="step-2" class="timeline-step">
+                    <p class="text-xs font-bold text-slate-500 uppercase">Step 2: 堆内存实例化</p>
+                    <p class="text-sm mt-1">新节点 0x999 诞生，它的内部 next 已经被填上了刚才拿到的 <b class="text-blue-400">0x200</b>。</p>
+                </div>
+
+                <div id="step-3" class="timeline-step">
+                    <p class="text-xs font-bold text-slate-500 uppercase">Step 3: 赋值更新 (Left Side)</p>
+                    <div class="code-line bg-slate-800/50 mt-1"><span class="highlight-part">curr.next</span> = 0x999;</div>
+                    <p class="text-sm mt-1">直到此时，<span class="highlight-part">curr.next</span> 的值才从 0x200 变为 0x999。</p>
+                </div>
+
+                <div id="step-4" class="timeline-step">
+                    <p class="text-xs font-bold text-slate-500 uppercase">Step 4: 下一行代码启动</p>
+                    <div class="code-line bg-slate-800/50 mt-1">curr.next.next.prev = <span class="highlight-part">curr.next</span>;</div>
+                    <p class="text-sm mt-1 text-amber-400 font-bold italic">注意！现在去读 curr.next，拿到的已经是 0x999 了！</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧：内存可视化 -->
+        <div class="bg-slate-900 lg:col-span-7 rounded-2xl border border-slate-700 relative p-6 flex flex-col shadow-2xl">
+            <div class="flex justify-between items-center mb-8 bg-slate-800/80 p-4 rounded-xl">
+                <span class="text-slate-500 text-[10px] font-black uppercase">Real-time Memory Monitor</span>
+                <div id="explainText" class="text-blue-400 font-bold text-sm">等待指令启动...</div>
+            </div>
+
+            <div class="flex-grow relative" id="heapArea">
+                <svg id="svgContainer">
+                    <defs>
+                        <marker id="arrow-next" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#3b82f6"/></marker>
+                        <marker id="arrow-prev" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#ef4444"/></marker>
+                    </defs>
+                </svg>
+
+                <div class="flex items-center gap-20 absolute top-0 left-4" id="nodesBox">
+                    <!-- 节点 0x100 -->
+                    <div id="node-0x100" class="memory-block">
+                        <div class="bg-slate-700 text-[10px] p-2 flex justify-between rounded-t-md font-bold"><span>Node</span><span class="text-blue-300">0x100</span></div>
+                        <div class="mem-cell"><span class="cell-label">data</span><div class="cell-value val-data">10</div></div>
+                        <div class="mem-cell"><span class="cell-label">next</span><div id="val-100-next" class="cell-value val-addr">0x200</div></div>
+                    </div>
+
+                    <!-- 节点 0x200 -->
+                    <div id="node-0x200" class="memory-block">
+                        <div class="bg-slate-700 text-[10px] p-2 flex justify-between rounded-t-md font-bold"><span>Node</span><span class="text-blue-300">0x200</span></div>
+                        <div class="mem-cell"><span class="cell-label">data</span><div class="cell-value val-data">20</div></div>
+                        <div class="mem-cell"><span class="cell-label">prev</span><div id="val-200-prev" class="cell-value val-addr">0x100</div></div>
+                    </div>
+                </div>
+
+                <!-- 游离态新节点 -->
+                <div id="node-0x999" class="memory-block absolute left-4 top-52 opacity-0 translate-y-10" style="border-color: #f59e0b; width: 220px;">
+                    <div class="bg-amber-900 text-[10px] p-2 flex justify-between rounded-t-md font-bold text-white"><span>New Node</span><span class="text-amber-300">0x999</span></div>
+                    <div class="mem-cell"><span class="cell-label">.next (来自快照)</span><div id="val-999-next" class="cell-value val-null">null</div></div>
+                    <div class="mem-cell"><span class="cell-label">.prev (来自快照)</span><div id="val-999-prev" class="cell-value val-null">null</div></div>
+                </div>
+            </div>
+
+            <div class="mt-auto p-4 bg-slate-800/30 rounded-xl text-xs text-slate-400">
+                [结论]：第一行代码里的两个 <code>curr.next</code> 虽然写的一样，但在 CPU 眼里，一个是“读取时刻的旧数据”，一个是“写回时刻的新盒子”。
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentStep = 0;
+        const nextBtn = document.getElementById('nextBtn');
+        const explain = document.getElementById('explainText');
+        const svg = document.getElementById('svgContainer');
+
+        function drawLink(fromId, toId, type) {
+            const from = document.getElementById(fromId).getBoundingClientRect();
+            const to = document.getElementById(toId).getBoundingClientRect();
+            const container = document.getElementById('heapArea').getBoundingClientRect();
+            const startX = from.left - container.left + from.width / 2;
+            const startY = from.top - container.top + from.height / 2;
+            const endX = to.left - container.left + to.width / 2;
+            const endY = to.top - container.top;
+            const endYBottom = to.bottom - container.top;
+
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            let d = "";
+            if(type === 'next') {
+                d = `M ${startX} ${startY} C ${startX} ${startY + 60}, ${endX} ${startY + 60}, ${endX} ${endY - 4}`;
+                path.setAttribute("stroke", "#3b82f6");
+                path.setAttribute("marker-end", "url(#arrow-next)");
+            } else {
+                d = `M ${startX} ${startY} C ${startX} ${startY - 60}, ${endX} ${startY - 60}, ${endX} ${endYBottom + 4}`;
+                path.setAttribute("stroke", "#ef4444");
+                path.setAttribute("marker-end", "url(#arrow-prev)");
+            }
+            path.setAttribute("d", d);
+            path.setAttribute("class", "link-line");
+            svg.appendChild(path);
+        }
+
+        function clearLines() {
+            Array.from(svg.children).forEach(c => { if(c.tagName !== 'defs') c.remove(); });
+        }
+
+        function update() {
+            currentStep++;
+            document.querySelectorAll('.timeline-step').forEach(s => s.classList.remove('active'));
+            document.getElementById(`step-${currentStep}`).classList.add('active');
+
+            if (currentStep === 1) {
+                explain.innerHTML = "CPU 读取 <span class='text-white font-bold'>curr.next</span>。拿到地址：<b class='text-blue-400'>0x200</b>。";
+                document.getElementById('val-100-next').classList.add('flash-update');
+            }
+            else if (currentStep === 2) {
+                explain.innerHTML = "新节点 0x999 创建。它的 next 字段填入了刚才拿到的 <b class='text-blue-400'>0x200</b>。";
+                const n999 = document.getElementById('node-0x999');
+                n999.classList.replace('opacity-0', 'opacity-100');
+                n999.classList.replace('translate-y-10', 'translate-y-0');
+
+                document.getElementById('val-999-next').innerText = "0x200";
+                document.getElementById('val-999-next').className = "cell-value val-addr flash-update";
+                document.getElementById('val-999-prev').innerText = "0x100";
+                document.getElementById('val-999-prev').className = "cell-value val-addr flash-update";
+
+                setTimeout(() => {
+                    drawLink('val-999-next', 'node-0x200', 'next');
+                }, 500);
+            }
+            else if (currentStep === 3) {
+                explain.innerHTML = "赋值生效！<b class='text-purple-400'>curr.next</b> 的内容被改写为 <b class='text-amber-400'>0x999</b>。";
+                document.getElementById('val-100-next').innerText = "0x999";
+                document.getElementById('val-100-next').className = "cell-value val-addr flash-update";
+                clearLines();
+                drawLink('val-100-next', 'node-0x999', 'next');
+                drawLink('val-999-next', 'node-0x200', 'next');
+            }
+            else if (currentStep === 4) {
+                explain.innerHTML = "进入下一行。此时读取 <span class='text-white font-bold'>curr.next</span>，结果是全新的 <b class='text-amber-400'>0x999</b>！";
+                document.getElementById('val-100-next').classList.add('flash-update');
+                nextBtn.disabled = true;
+                nextBtn.innerText = "分析结束";
+            }
+        }
+
+        nextBtn.addEventListener('click', update);
+        document.getElementById('resetBtn').addEventListener('click', () => location.reload());
+
+        window.onload = () => {
+            drawLink('val-100-next', 'node-0x200', 'next');
+        };
+    </script>
+</body>
+</html>
