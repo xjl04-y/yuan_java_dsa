@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>架构级 DSA - 单调栈内存推演沙盘</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #e2e8f0; }
+        .bar-transition { transition: all 0.3s ease; }
+        .stack-item-enter { animation: slideInRight 0.3s forwards; }
+        .stack-item-exit { animation: fadeOutRight 0.3s forwards; background-color: #ef4444 !important; border-color: #b91c1c !important; }
+        @keyframes slideInRight {
+            from { opacity: 0; transform: translateX(20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes fadeOutRight {
+            from { opacity: 1; transform: translateX(0); }
+            to { opacity: 0; transform: translateX(20px); }
+        }
+        .code-line { transition: background-color 0.2s; padding: 2px 8px; border-radius: 4px; border-left: 3px solid transparent; }
+        .code-active { background-color: #1e293b; border-left-color: #3b82f6; color: #60a5fa; font-weight: bold; }
+        .highlight-eval { box-shadow: 0 0 10px 2px rgba(59, 130, 246, 0.5); border-color: #3b82f6; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center p-6">
+
+<header class="w-full max-w-7xl mb-6 flex flex-col md:flex-row justify-between items-end gap-4">
+    <div>
+        <h1 class="text-3xl font-bold text-blue-400 tracking-tight">单调栈底层内存推演沙盘</h1>
+        <p class="text-slate-400 text-sm mt-1">寻找左侧第一个严格大于当前的元素 (Find Left Greater)</p>
+    </div>
+    <div class="flex items-center gap-3 bg-slate-800 p-3 rounded-xl border border-slate-700 shadow-xl">
+        <input type="text" id="custom-input" value="5,3,1,2,4" class="bg-slate-900 border border-slate-600 text-white text-center rounded px-3 py-1.5 w-40 focus:outline-none focus:border-blue-500" placeholder="逗号分隔数字">
+        <button id="btn-init" class="bg-slate-600 hover:bg-slate-500 text-white px-4 py-1.5 rounded transition shadow">初始化数据</button>
+        <div class="w-px h-6 bg-slate-600 mx-1"></div>
+        <button id="btn-step" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-5 py-1.5 rounded transition shadow-lg flex items-center gap-2">
+            步进 (Step)
+        </button>
+        <button id="btn-auto" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-1.5 rounded transition shadow flex items-center gap-2">
+            自动播放
+        </button>
+    </div>
+</header>
+
+<main class="w-full max-w-7xl grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+    <!-- 左侧：原始数组与结果视窗 -->
+    <div class="lg:col-span-7 flex flex-col gap-6">
+
+        <!-- 数组物理内存视图 -->
+        <div class="bg-slate-800 rounded-2xl border border-slate-700 p-6 shadow-2xl relative h-64 flex flex-col">
+            <h2 class="text-sm font-semibold text-slate-400 mb-4 absolute top-4 left-4">原始数组 (RAM) 视图</h2>
+            <div id="array-bars" class="flex-1 flex items-end justify-center gap-4 mt-6">
+                <!-- JS将在这里生成柱状图 -->
+            </div>
+        </div>
+
+        <!-- 结果数组视图 -->
+        <div class="bg-slate-800 rounded-2xl border border-slate-700 p-6 shadow-xl relative h-32 flex flex-col justify-center">
+            <h2 class="text-sm font-semibold text-slate-400 mb-2 absolute top-4 left-4">Result 数组 (计算结果: 目标 Index)</h2>
+            <div id="res-array" class="flex items-center justify-center gap-3">
+                <!-- JS将在这里生成结果框 -->
+            </div>
+        </div>
+
+        <!-- 新增：ALU 逻辑运算器实时监控 -->
+        <div class="bg-slate-800 rounded-2xl border border-slate-700 p-6 shadow-xl relative flex flex-col justify-center">
+            <h2 class="text-sm font-semibold text-slate-400 mb-2 absolute top-4 left-4">ALU 运算器 (实时变量监控)</h2>
+            <div class="mt-4 flex flex-col gap-2 font-mono text-sm text-slate-300 bg-slate-900 p-4 rounded border border-slate-700">
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="flex flex-col gap-1 border-r border-slate-700 pr-4">
+                        <div class="text-xs text-slate-500 mb-1 border-b border-slate-700 pb-1">右侧操作数: 当前元素</div>
+                        <div class="flex justify-between"><span class="text-slate-400">游标 i:</span> <span id="alu-i" class="text-blue-400 font-bold">-</span></div>
+                        <div class="flex justify-between"><span class="text-slate-400">nums[i]:</span> <span id="alu-num-i" class="text-blue-400 font-bold text-lg">-</span></div>
+                    </div>
+                    <div class="flex flex-col gap-1 pl-2">
+                        <div class="text-xs text-slate-500 mb-1 border-b border-slate-700 pb-1">左侧操作数: 栈顶元素</div>
+                        <div class="flex justify-between"><span class="text-slate-400">top:</span> <span id="alu-top" class="text-amber-400 font-bold">-</span></div>
+                        <div class="flex justify-between"><span class="text-slate-400">stack[top]:</span> <span id="alu-stack-top" class="text-amber-400 font-bold">-</span></div>
+                        <div class="flex justify-between"><span class="text-slate-400">nums[stack[top]]:</span> <span id="alu-num-stack-top" class="text-amber-400 font-bold text-lg">-</span></div>
+                    </div>
+                </div>
+                <div class="mt-2 pt-2 border-t border-slate-700 flex justify-between items-center">
+                    <span class="text-slate-400">while 条件判定:</span>
+                    <span id="alu-eval" class="text-xs px-3 py-1.5 rounded bg-slate-800 border border-slate-600 text-slate-500 font-bold transition-all">等待执行</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右侧：硬件栈区与代码逻辑区 -->
+    <div class="lg:col-span-5 flex flex-col gap-6">
+
+        <!-- 单调栈物理内存 -->
+        <div class="bg-slate-800 rounded-2xl border border-slate-700 p-4 shadow-xl flex-1 relative flex flex-col">
+            <h2 class="text-sm font-semibold text-slate-400 mb-2">L1 Cache: int[] stack 物理内存视图</h2>
+
+            <!-- 新增：底层 int[] 数组连续内存视图 -->
+            <div class="mb-4 bg-slate-900 p-3 rounded-lg border border-slate-700">
+                <div class="text-xs text-slate-500 mb-2">真实的物理数组 (出栈仅移动指针，不擦除脏数据)</div>
+                <div id="physical-stack-array" class="flex items-center gap-1 overflow-x-auto relative pb-4">
+                    <!-- JS将在这里生成物理栈数组 -->
+                </div>
+            </div>
+
+            <div class="text-xs text-amber-500 mb-2">逻辑栈抽象视图 (存入 Index，以 Index 寻址)</div>
+
+            <div class="flex-1 border-2 border-dashed border-slate-600 rounded-lg p-2 flex flex-col-reverse items-center gap-2 overflow-y-auto relative bg-slate-900/50" id="stack-container">
+                <!-- JS生成栈元素 -->
+            </div>
+            <div class="mt-3 text-center font-mono text-sm">
+                <span class="text-slate-400">指针状态:</span>
+                <span id="top-pointer-display" class="bg-slate-700 text-blue-300 px-2 py-0.5 rounded">top = -1</span>
+            </div>
+        </div>
+
+        <!-- 核心代码审查区 -->
+        <div class="bg-[#1e1e1e] rounded-2xl border border-slate-700 overflow-hidden shadow-2xl">
+            <div class="bg-slate-800/80 px-4 py-2 border-b border-slate-700 flex justify-between items-center">
+                <span class="text-xs font-mono text-slate-300">MonotonousStack.java</span>
+                <span id="status-badge" class="text-xs bg-slate-600 px-2 py-0.5 rounded-full">等待初始化</span>
+            </div>
+            <pre class="p-4 text-sm font-mono text-slate-300 overflow-x-auto leading-relaxed" id="code-block">
+<div class="code-line" id="line-0">public int[] findLeftGreater(int[] nums) {</div>
+<div class="code-line" id="line-1">    int[] res = new int[nums.length];</div>
+<div class="code-line" id="line-2">    <span class="text-purple-400">for</span> (<span class="text-blue-300">int i</span> = 0; i < nums.length; i++) {</div>
+<div class="code-line" id="line-3">        <span class="text-amber-400">// 大清洗：淘汰无效的被遮挡数据</span></div>
+<div class="code-line" id="line-4">        <span class="text-purple-400">while</span> (top != -1 && nums[stack[top]] <= nums[i]) {</div>
+<div class="code-line" id="line-5">            top--;</div>
+<div class="code-line" id="line-6">        }</div>
+<div class="code-line" id="line-7">        <span class="text-amber-400">// 确立历史答案</span></div>
+<div class="code-line" id="line-8">        <span class="text-purple-400">if</span> (top == -1) {</div>
+<div class="code-line" id="line-9">            res[i] = -1;</div>
+<div class="code-line" id="line-10">        } <span class="text-purple-400">else</span> {</div>
+<div class="code-line" id="line-11">            res[i] = stack[top];</div>
+<div class="code-line" id="line-12">        }</div>
+<div class="code-line" id="line-13">        <span class="text-amber-400">// 新王登基 (注意：存的是索引 i)</span></div>
+<div class="code-line" id="line-14">        stack[++top] = i;</div>
+<div class="code-line" id="line-15">    }</div>
+<div class="code-line" id="line-16">    <span class="text-purple-400">return</span> res;</div>
+<div class="code-line" id="line-17">}</div></pre>
+        </div>
+    </div>
+</main>
+
+<script>
+    // 核心运行状态
+    let nums = [];
+    let res = [];
+    let stack = []; // 模拟底层数组栈 (存放 index)
+    let topPtr = -1;
+
+    // 仿真器控制状态
+    let currentI = 0;
+    let executionStep = 0; // 0:ForLoop, 1:WhileCheck, 2:WhilePop, 3:IfCheck, 4:IfBody, 5:ElseBody, 6:Push, 7:LoopEnd, 8:Finish
+    let isAutoPlaying = false;
+    let autoPlayInterval = null;
+
+    // DOM 元素绑定
+    const ui = {
+        arrayBars: document.getElementById('array-bars'),
+        resArray: document.getElementById('res-array'),
+        stackContainer: document.getElementById('stack-container'),
+        topDisplay: document.getElementById('top-pointer-display'),
+        btnInit: document.getElementById('btn-init'),
+        btnStep: document.getElementById('btn-step'),
+        btnAuto: document.getElementById('btn-auto'),
+        customInput: document.getElementById('custom-input'),
+        statusBadge: document.getElementById('status-badge'),
+        aluI: document.getElementById('alu-i'),
+        aluNumI: document.getElementById('alu-num-i'),
+        aluTop: document.getElementById('alu-top'),
+        aluStackTop: document.getElementById('alu-stack-top'),
+        aluNumStackTop: document.getElementById('alu-num-stack-top'),
+        aluEval: document.getElementById('alu-eval'),
+        physicalStackArray: document.getElementById('physical-stack-array')
+    };
+
+    // UI 渲染探针：高亮当前执行的代码行
+    function highlightLine(line) {
+        document.querySelectorAll('.code-line').forEach(el => el.classList.remove('code-active'));
+        const activeLine = document.getElementById(`line-${line}`);
+        if (activeLine) activeLine.classList.add('code-active');
+    }
+
+    // UI 渲染探针：刷新 top 指针显示
+    function updateTopDisplay() {
+        ui.topDisplay.textContent = `top = ${topPtr}`;
+    }
+
+    // UI 渲染探针：实时重绘逻辑栈与物理内存阵列
+    function renderStack() {
+        // 1. 更新逻辑栈 (L1 Cache 抽象视图)
+        ui.stackContainer.innerHTML = '<div class="text-slate-500 text-xs mt-auto">栈底 (Bottom)</div>';
+        for(let k = 0; k <= topPtr; k++) {
+            const index = stack[k];
+            const val = nums[index];
+            const isTop = (k === topPtr);
+            const item = document.createElement('div');
+            item.className = `w-full p-2 rounded border-2 ${isTop ? 'border-blue-500 bg-blue-900/30' : 'border-slate-500 bg-slate-700'} flex justify-between items-center shadow-md stack-item-enter`;
+            item.id = `stack-item-k${k}`;
+            item.innerHTML = `
+                    <span class="text-xs font-mono text-slate-300">idx: <span class="text-white font-bold">${index}</span></span>
+                    <span class="text-xs text-amber-400">val: ${val}</span>
+                `;
+            ui.stackContainer.prepend(item);
+        }
+
+        // 2. 更新底层连续物理数组视图 (模拟脏数据与指针游标)
+        for(let i = 0; i < nums.length; i++) {
+            const box = document.getElementById(`phys-stack-box-${i}`);
+            const ptr = document.getElementById(`phys-pointer-${i}`);
+            const minus1Ptr = document.getElementById('phys-pointer-minus1');
+
+            if (minus1Ptr) {
+                minus1Ptr.style.opacity = topPtr === -1 ? '1' : '0';
+            }
+
+            if (!box || !ptr) continue;
+
+            if (i <= topPtr) {
+                // 有效内存区
+                box.textContent = stack[i];
+                box.className = 'w-8 h-8 rounded border border-blue-500 flex items-center justify-center font-mono text-blue-300 bg-blue-900/50 transition-colors shadow-[0_0_8px_rgba(59,130,246,0.5)]';
+            } else {
+                // 废弃内存区 (由于出栈仅移动top指针，这里模拟物理地址上依然存在的脏数据)
+                box.textContent = stack[i];
+                box.className = 'w-8 h-8 rounded border border-slate-600 flex items-center justify-center font-mono text-slate-500 bg-slate-800 transition-colors opacity-50 line-through';
+            }
+
+            // 游标指示器
+            if (i === topPtr) {
+                ptr.className = 'text-[10px] text-blue-400 mt-1 font-bold transition-all';
+            } else {
+                ptr.className = 'text-[10px] text-transparent mt-1 font-bold transition-all';
+            }
+        }
+        updateTopDisplay();
+    }
+
+    function renderInit() {
+        // 解析输入
+        const raw = ui.customInput.value;
+        nums = raw.split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n));
+        if (nums.length === 0) { nums = [5, 3, 1, 2, 4]; ui.customInput.value = "5,3,1,2,4"; }
+
+        // 重置状态
+        res = new Array(nums.length).fill(null);
+        stack = new Array(nums.length).fill(0);
+        topPtr = -1;
+        currentI = 0;
+        executionStep = 0;
+        updateStatusBadge("准备启动", "bg-slate-600");
+
+        ui.aluI.textContent = '-'; ui.aluNumI.textContent = '-';
+        ui.aluTop.textContent = '-'; ui.aluStackTop.textContent = '-'; ui.aluNumStackTop.textContent = '-';
+        ui.aluEval.textContent = '等待执行';
+        ui.aluEval.className = 'text-xs px-3 py-1.5 rounded bg-slate-800 border border-slate-600 text-slate-500 font-bold transition-all';
+
+        // 寻找最大值用于计算柱状图高度比例
+        const maxVal = Math.max(...nums);
+
+        // 渲染原始数组
+        ui.arrayBars.innerHTML = '';
+        nums.forEach((val, idx) => {
+            const height = Math.max(10, (val / maxVal) * 160); // 最小高度保证可见
+            const barHtml = `
+                    <div class="flex flex-col items-center gap-2 group" id="bar-wrapper-${idx}">
+                        <div class="text-xs text-slate-400 font-mono">idx:${idx}</div>
+                        <div id="bar-${idx}" class="w-12 bg-slate-600 rounded-t-md bar-transition relative border border-slate-500 shadow-md flex items-end justify-center pb-2" style="height: ${height}px">
+                            <span class="text-white font-bold text-sm">${val}</span>
+                        </div>
+                    </div>
+                `;
+            ui.arrayBars.insertAdjacentHTML('beforeend', barHtml);
+        });
+
+        // 渲染结果数组空位
+        ui.resArray.innerHTML = '';
+        nums.forEach((_, idx) => {
+            const resBox = `
+                    <div id="res-box-${idx}" class="w-12 h-12 rounded border-2 border-slate-600 flex items-center justify-center font-mono text-slate-500 bg-slate-900 shadow-inner">
+                        ?
+                    </div>
+                `;
+            ui.resArray.insertAdjacentHTML('beforeend', resBox);
+        });
+
+        // 新增：渲染物理栈数组的初始状态
+        ui.physicalStackArray.innerHTML = '';
+        nums.forEach((_, idx) => {
+            const physBox = `
+                    <div class="flex flex-col items-center">
+                        <div class="text-[10px] text-slate-500 mb-1">[${idx}]</div>
+                        <div id="phys-stack-box-${idx}" class="w-8 h-8 rounded border border-slate-600 flex items-center justify-center font-mono text-slate-600 bg-slate-800 transition-colors">
+                            0
+                        </div>
+                        <div id="phys-pointer-${idx}" class="text-[10px] text-transparent mt-1 font-bold">^ top</div>
+                    </div>
+                `;
+            ui.physicalStackArray.insertAdjacentHTML('beforeend', physBox);
+        });
+        if (topPtr === -1) {
+            const initPointer = `<div id="phys-pointer-minus1" class="absolute left-0 bottom-0 text-[10px] text-blue-400 font-bold transform -translate-x-full">^ top(-1)</div>`;
+            ui.physicalStackArray.insertAdjacentHTML('beforeend', initPointer);
+        }
+
+        ui.stackContainer.innerHTML = '<div class="text-slate-500 text-xs mt-auto">栈底 (Bottom)</div>';
+
+        for(let k = 0; k <= topPtr; k++) {
+            const index = stack[k];
+            const val = nums[index];
+            const isTop = (k === topPtr);
+
+            const item = document.createElement('div');
+            item.className = `w-full p-2 rounded border-2 ${isTop ? 'border-blue-500 bg-blue-900/30' : 'border-slate-500 bg-slate-700'} flex justify-between items-center shadow-md stack-item-enter`;
+            item.id = `stack-item-k${k}`;
+            item.innerHTML = `
+                    <span class="text-xs font-mono text-slate-300">idx: <span class="text-white font-bold">${index}</span></span>
+                    <span class="text-xs text-amber-400">val: ${val}</span>
+                `;
+            ui.stackContainer.prepend(item); // 放到顶部 (因为是 flex-col-reverse 所以实际上是在DOM的最上面)
+        }
+
+        // 新增：更新物理数组视图及 top 游标
+        for(let i = 0; i < nums.length; i++) {
+            const box = document.getElementById(`phys-stack-box-${i}`);
+            const ptr = document.getElementById(`phys-pointer-${i}`);
+            const minus1Ptr = document.getElementById('phys-pointer-minus1');
+
+            if (minus1Ptr) {
+                minus1Ptr.style.opacity = topPtr === -1 ? '1' : '0';
+            }
+
+            if (i <= topPtr) {
+                // 有效数据区
+                box.textContent = stack[i];
+                box.className = 'w-8 h-8 rounded border border-blue-500 flex items-center justify-center font-mono text-blue-300 bg-blue-900/50 transition-colors shadow-[0_0_8px_rgba(59,130,246,0.5)]';
+            } else {
+                // 脏数据区（废弃内存，值依然存在！）
+                box.textContent = stack[i];
+                box.className = 'w-8 h-8 rounded border border-slate-600 flex items-center justify-center font-mono text-slate-500 bg-slate-800 transition-colors opacity-50 line-through';
+            }
+
+            if (i === topPtr) {
+                ptr.className = 'text-[10px] text-blue-400 mt-1 font-bold transition-all';
+            } else {
+                ptr.className = 'text-[10px] text-transparent mt-1 font-bold transition-all';
+            }
+        }
+
+        updateTopDisplay();
+    }
+
+    function updateStatusBadge(text, colorClass) {
+        ui.statusBadge.className = `text-xs px-2 py-0.5 rounded-full text-white ${colorClass}`;
+        ui.statusBadge.textContent = text;
+    }
+
+    function stepExecution() {
+        if (currentI >= nums.length) {
+            highlightLine(16);
+            updateStatusBadge("执行完毕", "bg-emerald-600");
+            ui.btnStep.disabled = true;
+            ui.btnStep.classList.add('opacity-50');
+            if (isAutoPlaying) toggleAutoPlay();
+            return;
+        }
+
+        // 重置所有柱状图高亮，仅高亮当前 currentI
+        document.querySelectorAll('[id^="bar-"]').forEach(el => {
+            el.classList.remove('bg-blue-500', 'border-blue-400');
+            el.classList.add('bg-slate-600', 'border-slate-500');
+        });
+        const activeBar = document.getElementById(`bar-${currentI}`);
+        if (activeBar) {
+            activeBar.classList.remove('bg-slate-600', 'border-slate-500');
+            activeBar.classList.add('bg-blue-500', 'border-blue-400');
+        }
+
+        switch(executionStep) {
+            case 0: // for 循环入口
+                highlightLine(2);
+                updateStatusBadge(`处理索引 i = ${currentI}, 值 = ${nums[currentI]}`, "bg-blue-600");
+
+                ui.aluI.textContent = currentI;
+                ui.aluNumI.textContent = nums[currentI];
+                ui.aluTop.textContent = topPtr;
+                ui.aluStackTop.textContent = '-';
+                ui.aluNumStackTop.textContent = '-';
+                ui.aluEval.textContent = '准备评估 while 条件...';
+                ui.aluEval.className = 'text-xs px-3 py-1.5 rounded bg-blue-900 border border-blue-600 text-blue-300 font-bold transition-all';
+
+                executionStep = 1;
+                break;
+            case 1: // while 检查
+                highlightLine(4);
+                ui.aluTop.textContent = topPtr;
+
+                if (topPtr !== -1) {
+                    const topIndex = stack[topPtr];
+                    const topValue = nums[topIndex];
+
+                    ui.aluStackTop.textContent = topIndex;
+                    ui.aluNumStackTop.textContent = topValue;
+
+                    // 视觉提示正在比较
+                    document.getElementById(`bar-${topIndex}`).classList.add('highlight-eval');
+                    activeBar.classList.add('highlight-eval');
+
+                    if (topValue <= nums[currentI]) {
+                        updateStatusBadge(`废数据清洗: ${topValue} <= ${nums[currentI]}`, "bg-rose-600");
+                        ui.aluEval.textContent = `${topValue} <= ${nums[currentI]} 成立，执行出栈!`;
+                        ui.aluEval.className = 'text-xs px-3 py-1.5 rounded bg-rose-900 border border-rose-600 text-rose-300 font-bold transition-all scale-105';
+                        executionStep = 2; // 去执行 pop
+                    } else {
+                        updateStatusBadge(`保护期: ${topValue} > ${nums[currentI]}`, "bg-teal-600");
+                        ui.aluEval.textContent = `${topValue} <= ${nums[currentI]} 不成立，停止清洗`;
+                        ui.aluEval.className = 'text-xs px-3 py-1.5 rounded bg-teal-900 border border-teal-600 text-teal-300 font-bold transition-all';
+                        document.getElementById(`bar-${topIndex}`).classList.remove('highlight-eval');
+                        activeBar.classList.remove('highlight-eval');
+                        executionStep = 3; // 跳出 while，去执行 if
+                    }
+                } else {
+                    updateStatusBadge(`栈空，跳过清洗`, "bg-slate-500");
+                    ui.aluStackTop.textContent = '无(空)';
+                    ui.aluNumStackTop.textContent = '无(空)';
+                    ui.aluEval.textContent = `top == -1，跳出 while`;
+                    ui.aluEval.className = 'text-xs px-3 py-1.5 rounded bg-slate-800 border border-slate-500 text-slate-300 font-bold transition-all';
+                    executionStep = 3; // 栈空，去执行 if
+                }
+                break;
+            case 2: // while 体内 (pop)
+                highlightLine(5);
+                ui.aluEval.textContent = `执行 top-- (移除过期数据)`;
+                ui.aluEval.className = 'text-xs px-3 py-1.5 rounded bg-rose-800 border border-rose-500 text-white font-bold transition-all';
+
+                const topIndexToPop = stack[topPtr];
+                const poppedBar = document.getElementById(`bar-${topIndexToPop}`);
+                poppedBar.classList.remove('highlight-eval');
+                poppedBar.classList.add('bg-rose-900', 'border-rose-600', 'opacity-30'); // 物理遮挡变暗
+
+                const stackDOMItem = document.getElementById(`stack-item-k${topPtr}`);
+                if(stackDOMItem) {
+                    stackDOMItem.classList.remove('stack-item-enter');
+                    stackDOMItem.classList.add('stack-item-exit');
+                }
+
+                setTimeout(() => {
+                    topPtr--; // 底层指针移动
+                    renderStack();
+                    activeBar.classList.remove('highlight-eval');
+                }, 300); // 等待动画结束
+
+                executionStep = 1; // 再次回到 while 检查
+                break;
+            case 3: // if 检查
+                highlightLine(8);
+                ui.aluEval.textContent = `清洗结束，确立答案`;
+                ui.aluEval.className = 'text-xs px-3 py-1.5 rounded bg-slate-800 border border-slate-600 text-slate-400 font-bold transition-all';
+
+                if (topPtr === -1) {
+                    executionStep = 4;
+                } else {
+                    executionStep = 5;
+                }
+                break;
+            case 4: // if 内部 (res[i] = -1)
+                highlightLine(9);
+                res[currentI] = -1;
+                const resBoxIf = document.getElementById(`res-box-${currentI}`);
+                resBoxIf.textContent = '-1';
+                resBoxIf.classList.replace('text-slate-500', 'text-rose-400');
+                resBoxIf.classList.replace('bg-slate-900', 'bg-slate-800');
+                resBoxIf.classList.add('border-rose-500');
+                executionStep = 6;
+                break;
+            case 5: // else 内部 (res[i] = stack[top])
+                highlightLine(11);
+                const answerIndex = stack[topPtr];
+                res[currentI] = answerIndex;
+                const resBoxElse = document.getElementById(`res-box-${currentI}`);
+                resBoxElse.textContent = answerIndex;
+                resBoxElse.classList.replace('text-slate-500', 'text-teal-400');
+                resBoxElse.classList.replace('bg-slate-900', 'bg-slate-800');
+                resBoxElse.classList.add('border-teal-500');
+
+                // 建立物理连线感（高亮答案柱子）
+                document.getElementById(`bar-${answerIndex}`).classList.add('ring-2', 'ring-teal-400', 'ring-offset-2', 'ring-offset-slate-800');
+                executionStep = 6;
+                break;
+            case 6: // stack[++top] = i
+                highlightLine(14);
+                // 清除之前的 ring 高亮
+                document.querySelectorAll('.ring-2').forEach(el => el.className = el.className.replace(/ring-2 ring-[a-z]+-400 ring-offset-2 ring-offset-slate-800/g, ''));
+
+                topPtr++;
+                stack[topPtr] = currentI; // 底层压栈
+                renderStack();
+                executionStep = 7;
+                break;
+            case 7: // for 循环结尾 i++
+                currentI++;
+                executionStep = 0;
+                stepExecution(); // 自动进入下一轮的第一步
+                break;
+        }
+    }
+
+    ui.btnInit.addEventListener('click', () => {
+        if (isAutoPlaying) toggleAutoPlay();
+        renderInit();
+    });
+
+    ui.btnStep.addEventListener('click', stepExecution);
+
+    function toggleAutoPlay() {
+        if (isAutoPlaying) {
+            clearInterval(autoPlayInterval);
+            ui.btnAuto.innerHTML = '自动播放';
+            ui.btnAuto.classList.replace('bg-rose-600', 'bg-emerald-600');
+            ui.btnAuto.classList.replace('hover:bg-rose-500', 'hover:bg-emerald-500');
+            ui.btnStep.disabled = false;
+            ui.btnStep.classList.remove('opacity-50');
+        } else {
+            if (currentI >= nums.length) renderInit();
+            autoPlayInterval = setInterval(stepExecution, 800); // 每步800ms
+            ui.btnAuto.innerHTML = '停止播放';
+            ui.btnAuto.classList.replace('bg-emerald-600', 'bg-rose-600');
+            ui.btnAuto.classList.replace('hover:bg-emerald-500', 'hover:bg-rose-500');
+            ui.btnStep.disabled = true;
+            ui.btnStep.classList.add('opacity-50');
+        }
+        isAutoPlaying = !isAutoPlaying;
+    }
+
+    ui.btnAuto.addEventListener('click', toggleAutoPlay);
+
+    // 首次加载初始化
+    renderInit();
+
+</script>
+</body>
+</html>

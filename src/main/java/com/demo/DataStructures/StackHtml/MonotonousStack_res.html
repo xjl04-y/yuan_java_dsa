@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>单调栈作用可视化：雷达与跨度</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .building { transition: all 0.3s ease; }
+        .radar-beam {
+            stroke-dasharray: 10;
+            animation: dash 1s linear infinite;
+        }
+        @keyframes dash {
+            to { stroke-dashoffset: -20; }
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex flex-col items-center p-8">
+
+<div class="w-full max-w-4xl">
+    <h1 class="text-3xl font-bold text-blue-400 mb-2">单调栈的终极作用：计算跨度（Span）</h1>
+    <p class="text-slate-400 mb-8">点击下方的楼房，发射“向左探测的雷达”，亲眼看看 res 数组到底在干什么。</p>
+
+    <!-- 沙盘展示区 -->
+    <div class="relative bg-slate-800 rounded-2xl p-6 h-96 flex items-end justify-around border border-slate-700 shadow-2xl mb-8">
+
+        <!-- SVG 用于画雷达线段 -->
+        <svg id="svg-layer" class="absolute top-0 left-0 w-full h-full pointer-events-none z-10">
+            <!-- 雷达光束将在这里动态生成 -->
+        </svg>
+
+        <!-- 楼房 0 -->
+        <div id="building-0" class="building relative w-16 bg-slate-600 rounded-t-md flex flex-col items-center justify-end pb-2 cursor-pointer hover:bg-slate-500 z-20" style="height: 100%;" onclick="showRadar(0)">
+            <span class="text-xs text-slate-300 absolute -top-6">值:5</span>
+            <span class="font-bold text-lg">0号</span>
+        </div>
+
+        <!-- 楼房 1 -->
+        <div id="building-1" class="building relative w-16 bg-slate-600 rounded-t-md flex flex-col items-center justify-end pb-2 cursor-pointer hover:bg-slate-500 z-20" style="height: 60%;" onclick="showRadar(1)">
+            <span class="text-xs text-slate-300 absolute -top-6">值:3</span>
+            <span class="font-bold text-lg">1号</span>
+        </div>
+
+        <!-- 楼房 2 -->
+        <div id="building-2" class="building relative w-16 bg-slate-600 rounded-t-md flex flex-col items-center justify-end pb-2 cursor-pointer hover:bg-slate-500 z-20" style="height: 20%;" onclick="showRadar(2)">
+            <span class="text-xs text-slate-300 absolute -top-6">值:1</span>
+            <span class="font-bold text-lg">2号</span>
+        </div>
+
+        <!-- 楼房 3 -->
+        <div id="building-3" class="building relative w-16 bg-slate-600 rounded-t-md flex flex-col items-center justify-end pb-2 cursor-pointer hover:bg-slate-500 z-20" style="height: 40%;" onclick="showRadar(3)">
+            <span class="text-xs text-slate-300 absolute -top-6">值:2</span>
+            <span class="font-bold text-lg">3号</span>
+        </div>
+
+        <!-- 楼房 4 -->
+        <div id="building-4" class="building relative w-16 bg-slate-600 rounded-t-md flex flex-col items-center justify-end pb-2 cursor-pointer hover:bg-slate-500 z-20" style="height: 80%;" onclick="showRadar(4)">
+            <span class="text-xs text-slate-300 absolute -top-6">值:4</span>
+            <span class="font-bold text-lg">4号</span>
+        </div>
+
+    </div>
+
+    <!-- 数据与解说面板 -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- 底层数据 -->
+        <div class="bg-slate-800 p-6 rounded-xl border border-slate-700">
+            <h3 class="text-lg font-bold text-amber-400 mb-4">底层数据记录</h3>
+            <div class="space-y-3 font-mono text-sm">
+                <div class="flex justify-between">
+                    <span class="text-slate-400">楼房编号 (游标 i):</span>
+                    <span class="text-white">[ 0, 1, 2, 3, 4 ]</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-slate-400">楼房高度 (nums):</span>
+                    <span class="text-white">[ 5, 3, 1, 2, 4 ]</span>
+                </div>
+                <div class="flex justify-between border-t border-slate-600 pt-2">
+                    <span class="text-green-400 font-bold">探测报告 (res):</span>
+                    <span class="text-green-400 font-bold">[-1, 0, 1, 1, 0 ]</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 架构师解说 -->
+        <div class="bg-slate-800 p-6 rounded-xl border border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.3)]">
+            <h3 class="text-lg font-bold text-blue-400 mb-4">架构师解说台</h3>
+            <div id="explanation-box" class="text-slate-200">
+                <p>点击上方沙盘中的任意一栋楼房（比如 4号楼），看看 res 报告到底在物理世界中意味着什么！</p>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    const nums = [5, 3, 1, 2, 4];
+    const res = [-1, 0, 1, 1, 0];
+
+    function showRadar(currentIndex) {
+        // 1. 重置所有样式
+        document.querySelectorAll('.building').forEach(el => {
+            el.classList.remove('bg-blue-500', 'bg-rose-500', 'ring-4', 'ring-blue-400', 'ring-rose-400');
+            el.classList.add('bg-slate-600');
+        });
+        document.getElementById('svg-layer').innerHTML = '';
+
+        const targetIndex = res[currentIndex];
+
+        // 2. 高亮当前楼房 (起点)
+        const currentEl = document.getElementById(`building-${currentIndex}`);
+        currentEl.classList.remove('bg-slate-600');
+        currentEl.classList.add('bg-blue-500', 'ring-4', 'ring-blue-400');
+
+        // 3. 准备解说文本
+        let explainHtml = '';
+
+        if (targetIndex === -1) {
+            // 没有找到墙
+            explainHtml = `
+                    <p class="mb-2"><strong class="text-blue-400">游标 i = ${currentIndex}：</strong> 你现在站在 ${currentIndex}号楼顶（高度 ${nums[currentIndex]}）。</p>
+                    <p class="mb-2"><strong class="text-green-400">雷达报告 res[${currentIndex}] = -1：</strong> 向左发射雷达，什么都没扫到！左边没有比你高的楼。</p>
+                    <p class="text-amber-400 mt-4 border-t border-slate-600 pt-4"><strong>结论作用：</strong> 这说明 ${currentIndex}号楼是目前为止最高的楼！前方一片坦途，距离无限。</p>
+                `;
+        } else {
+            // 找到了墙，高亮目标墙
+            const targetEl = document.getElementById(`building-${targetIndex}`);
+            targetEl.classList.remove('bg-slate-600');
+            targetEl.classList.add('bg-rose-500', 'ring-4', 'ring-rose-400');
+
+            // 画雷达光束
+            drawRadarBeam(currentEl, targetEl);
+
+            // 计算物理跨度
+            const span = currentIndex - targetIndex;
+
+            explainHtml = `
+                    <p class="mb-2"><strong class="text-blue-400">游标 i = ${currentIndex}：</strong> 你站在 ${currentIndex}号楼顶（高度 ${nums[currentIndex]}）。</p>
+                    <p class="mb-2"><strong class="text-green-400">雷达报告 res[${currentIndex}] = ${targetIndex}：</strong> 雷达向左发射，砰！撞在了 <span class="text-rose-400">${targetIndex}号楼</span> 上！</p>
+                    <div class="mt-4 p-3 bg-slate-900 rounded border border-amber-500 border-dashed">
+                        <strong class="text-amber-400 block mb-1">🔥 终极作用（算距离）：</strong>
+                        物理距离 = 当前门牌号(${currentIndex}) - 挡路的门牌号(${targetIndex}) = <strong>${span}</strong><br>
+                        这意味着：你们之间夹着 ${span - 1} 栋矮楼。<br>
+                        如果下大雨，${targetIndex}号楼 和 ${currentIndex}号楼 之间，可以形成一个宽度为 ${span} 的大水坑！
+                    </div>
+                `;
+        }
+
+        // 更新解说面板
+        document.getElementById('explanation-box').innerHTML = explainHtml;
+    }
+
+    // 画一条从当前楼房发出的水平激光，打在目标楼房上
+    function drawRadarBeam(startEl, endEl) {
+        const svg = document.getElementById('svg-layer');
+        const svgRect = svg.getBoundingClientRect();
+
+        const startRect = startEl.getBoundingClientRect();
+        const endRect = endEl.getBoundingClientRect();
+
+        // 起点：当前楼房的左侧顶部
+        const startX = startRect.left - svgRect.left;
+        const startY = startRect.top - svgRect.top;
+
+        // 终点：目标楼房的右侧对应高度
+        const endX = endRect.right - svgRect.left;
+        const endY = startY; // 水平发射
+
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', startX);
+        line.setAttribute('y1', startY);
+        line.setAttribute('x2', endX);
+        line.setAttribute('y2', endY);
+        line.setAttribute('stroke', '#10B981'); // 绿色雷达线
+        line.setAttribute('stroke-width', '4');
+        line.setAttribute('class', 'radar-beam');
+
+        svg.appendChild(line);
+    }
+</script>
+</body>
+</html>

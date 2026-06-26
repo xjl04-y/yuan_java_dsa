@@ -1,6 +1,8 @@
-package com.demo.Algorithm;
+package com.demo.Algorithm.Pointers;
 
-
+/**
+ * 快慢指针
+ */
 public class FastAndSlowPointers {
     public static class ListNode {
         int val;
@@ -182,5 +184,42 @@ public class FastAndSlowPointers {
         }
 
         return slow;
+    }
+
+    /**
+     * 力扣19. 删除链表的倒数第 N 个结点
+     * 核心思想：利用前后双指针拉开一个固定长度为 n 的“滑动窗口”
+     */
+    public static ListNode removeNthFromEnd(ListNode head, int n) {
+        ListNode fast = head;
+        ListNode slow = head;
+
+        // 1. 让 fast 指针先走 n 步，这样 fast 和 slow 之间就隔了 n 个节点的距离 📏
+        for(int i = 0; i < n; i++) {
+            fast = fast.next;
+        }
+
+        // 2. 致命边界处理：如果 fast 走完 n 步后直接指向了 null
+        // 说明链表总长度正好是 n，我们要删除的正好是头节点 (head)
+        // 直接返回头节点的下一个节点即可，原头节点会被垃圾回收机制清理掉
+        if(fast == null) {
+            return head.next;
+        }
+
+        // 3. 两人保持这个固定的距离，同时往前走
+        // 注意条件是 fast.next != null，这样当 fast 走到最后一个节点时就会停下来
+        // 此时跑在后面的 slow 就会精确地停在【要删除节点的前驱节点】上 🎯
+        while (fast != null && fast.next != null) {
+            fast = fast.next;
+            slow = slow.next;
+        }
+
+        // 4. 执行删除操作：跳过 slow 紧挨着的下一个节点 ✂️
+        if (slow != null) {
+            slow.next = slow.next.next;
+        }
+
+        // 5. 返回修改后的原链表头节点
+        return head;
     }
 }

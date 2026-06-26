@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>每日温度：单调栈时光机与跨度调试器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .bar-transition { transition: all 0.3s ease; }
+        .highlight-line { background-color: rgba(59, 130, 246, 0.4) !important; border-left: 4px solid #3b82f6; }
+        .code-line { padding-left: 1rem; border-left: 4px solid transparent; transition: all 0.2s; }
+        /* 测量尺动画 */
+        .measure-ruler {
+            animation: expand 0.5s ease-out forwards;
+            transform-origin: left center;
+        }
+        @keyframes expand {
+            0% { transform: scaleX(0); opacity: 0;}
+            100% { transform: scaleX(1); opacity: 1;}
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-200 min-h-screen flex flex-col items-center p-4">
+
+<!-- 顶栏配置区 -->
+<div class="w-full max-w-7xl bg-slate-800 p-4 rounded-xl shadow-lg border border-slate-700 mb-6 flex flex-wrap gap-4 items-center justify-between">
+    <div class="flex-1 flex gap-4 items-center min-w-[300px]">
+        <label class="font-bold text-amber-400 whitespace-nowrap">自定义温度数据:</label>
+        <input type="text" id="input-data" value="73, 74, 75, 71, 69, 72, 76, 73" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 font-mono">
+    </div>
+    <div class="flex gap-3">
+        <button onclick="loadData()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded font-bold shadow-lg transition">加载数据并重置</button>
+        <button onclick="stepForward()" id="step-btn" class="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded font-bold shadow-lg transition flex items-center gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"></path></svg>
+            单步执行代码
+        </button>
+    </div>
+</div>
+
+<!-- 主体内容区 -->
+<div class="w-full max-w-7xl grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+    <!-- 左侧：沙盘可视化区 -->
+    <div class="lg:col-span-7 flex flex-col gap-6">
+
+        <!-- 温度柱状图与距离标尺区 -->
+        <div class="bg-slate-800 rounded-xl border border-slate-700 p-6 shadow-2xl relative flex flex-col justify-end" style="height: 380px;">
+            <h3 class="absolute top-4 left-6 text-xl font-bold text-slate-400">天气沙盘 (原数组 temperatures)</h3>
+
+            <!-- 这里用来画距离尺子 -->
+            <div id="ruler-container" class="absolute top-16 left-0 w-full h-12 pointer-events-none z-20"></div>
+
+            <div id="chart-container" class="flex justify-around items-end w-full h-48 relative border-b-2 border-slate-600 pb-2">
+                <!-- 柱子动态生成 -->
+            </div>
+
+            <!-- 游标指示器 -->
+            <div id="cursor-container" class="flex justify-around items-start w-full h-8 mt-2">
+                <!-- 游标动态生成 -->
+            </div>
+        </div>
+
+        <!-- 数据状态监控区 -->
+        <div class="grid grid-cols-2 gap-4">
+            <!-- 栈内存 -->
+            <div class="bg-slate-800 rounded-xl border border-slate-700 p-4 shadow-xl">
+                <h3 class="text-sm font-bold text-amber-500 mb-2 flex justify-between">
+                    <span>备忘录 (Stack 存未来门牌号)</span>
+                    <span id="top-display" class="text-slate-400">top = -1</span>
+                </h3>
+                <div id="stack-container" class="flex flex-col-reverse gap-1 h-32 overflow-y-auto p-2 bg-slate-900 rounded border border-slate-700">
+                    <!-- 栈内容动态生成 -->
+                </div>
+            </div>
+
+            <!-- 结果报告 -->
+            <div class="bg-slate-800 rounded-xl border border-slate-700 p-4 shadow-xl">
+                <h3 class="text-sm font-bold text-green-400 mb-2">雷达报告 (res 存等待天数)</h3>
+                <div id="res-container" class="flex flex-wrap gap-2 p-2 bg-slate-900 rounded border border-slate-700 min-h-[8rem] content-start">
+                    <!-- 结果动态生成 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右侧：代码与解说区 -->
+    <div class="lg:col-span-5 flex flex-col gap-6">
+
+        <!-- 架构师解说 -->
+        <div class="bg-slate-800 rounded-xl border border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.2)] p-5 min-h-[120px]">
+            <h3 class="text-lg font-bold text-blue-400 mb-2">运行状态解析</h3>
+            <p id="explanation-text" class="text-slate-300 text-sm leading-relaxed">点击右上角的“单步执行代码”开始推演。</p>
+        </div>
+
+        <!-- 代码执行区 -->
+        <div class="bg-[#1e1e1e] rounded-xl border border-slate-700 p-4 shadow-2xl overflow-x-auto text-sm font-mono flex-1">
+            <div id="line-init" class="code-line text-slate-300">public int[] dailyTemperatures(int[] temps) {</div>
+            <div id="line-var" class="code-line text-slate-300 ml-4">int n = temps.length;</div>
+            <div id="line-var2" class="code-line text-slate-300 ml-4">int[] stack = new int[n];</div>
+            <div id="line-var3" class="code-line text-slate-300 ml-4">int top = -1;</div>
+            <div id="line-var4" class="code-line text-slate-300 ml-4">int[] res = new int[n];</div>
+            <div class="h-2"></div>
+            <div id="line-for" class="code-line text-slate-300 ml-4"><span class="text-pink-400">for</span> (int i = n - 1; i >= 0; i--) {</div>
+            <div class="h-2"></div>
+            <div id="line-while" class="code-line text-slate-300 ml-8"><span class="text-pink-400">while</span> (top != -1 && temps[stack[top]] <= temps[i]) {</div>
+            <div id="line-pop" class="code-line text-slate-300 ml-12">top--; <span class="text-slate-500">// 踢出被遮挡的废数据</span></div>
+            <div id="line-while-end" class="code-line text-slate-300 ml-8">}</div>
+            <div class="h-2"></div>
+            <div id="line-if" class="code-line text-slate-300 ml-8"><span class="text-pink-400">if</span> (top == -1) {</div>
+            <div id="line-res-0" class="code-line text-slate-300 ml-12">res[i] = 0; <span class="text-slate-500">// 右侧无高墙</span></div>
+            <div id="line-else" class="code-line text-slate-300 ml-8">} <span class="text-pink-400">else</span> {</div>
+            <div id="line-res-dist" class="code-line text-slate-300 ml-12">res[i] = stack[top] - i; <span class="text-amber-400 font-bold">// 🔥 核心：算距离！</span></div>
+            <div id="line-if-end" class="code-line text-slate-300 ml-8">}</div>
+            <div class="h-2"></div>
+            <div id="line-push" class="code-line text-slate-300 ml-8">stack[++top] = i; <span class="text-slate-500">// 今天入栈，作为过去的未来</span></div>
+            <div id="line-for-end" class="code-line text-slate-300 ml-4">}</div>
+            <div id="line-return" class="code-line text-slate-300 ml-4"><span class="text-pink-400">return</span> res;</div>
+            <div class="code-line text-slate-300">}</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let temps = [];
+    let executionTrace = [];
+    let currentTraceIndex = 0;
+    let maxTemp = 0;
+
+    // 初始化
+    window.onload = () => {
+        loadData();
+    };
+
+    function loadData() {
+        const inputStr = document.getElementById('input-data').value;
+        temps = inputStr.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+        if (temps.length === 0) {
+            alert("请输入有效的数字数组");
+            return;
+        }
+        maxTemp = Math.max(...temps);
+
+        // 预计算所有的执行轨迹，实现完美的单步调试
+        generateTrace();
+        currentTraceIndex = 0;
+
+        // 渲染第0步（初始状态）
+        renderState(executionTrace[0]);
+        document.getElementById('step-btn').disabled = false;
+        document.getElementById('step-btn').classList.remove('opacity-50');
+        document.getElementById('explanation-text').innerHTML = "数据已加载。点击右上方 <b>单步执行代码</b> 启动时光机倒流！";
+    }
+
+    function generateTrace() {
+        executionTrace = [];
+        let n = temps.length;
+        let stack = new Array(n).fill(0);
+        let top = -1;
+        let res = new Array(n).fill(0);
+
+        // 初始状态
+        executionTrace.push({ line: 'line-init', i: null, top, stack: [...stack], res: [...res], highlight: null, msg: "初始化内存，准备开始推演。" });
+
+        for (let i = n - 1; i >= 0; i--) {
+            executionTrace.push({
+                line: 'line-for', i, top, stack: [...stack], res: [...res], highlight: [i],
+                msg: `时光机来到 <b class='text-blue-400'>第 ${i} 天</b>，今天气温 <b class='text-rose-400'>${temps[i]}度</b>。`
+            });
+
+            while (true) {
+                executionTrace.push({
+                    line: 'line-while', i, top, stack: [...stack], res: [...res], highlight: [i], checkStack: true,
+                    msg: `准备清理备忘录：查看栈顶记录的未来门牌号。`
+                });
+
+                if (top !== -1 && temps[stack[top]] <= temps[i]) {
+                    executionTrace.push({
+                        line: 'line-pop', i, top, stack: [...stack], res: [...res], highlight: [i, stack[top]], isPopping: true,
+                        msg: `发现死数据！栈顶第 ${stack[top]} 天只有 ${temps[stack[top]]}度，没今天热，被彻底遮挡，<b class='text-rose-500'>淘汰出局 (top--)</b>！`
+                    });
+                    top--;
+                } else {
+                    break;
+                }
+            }
+
+            executionTrace.push({
+                line: 'line-if', i, top, stack: [...stack], res: [...res], highlight: [i],
+                msg: `大清洗完成。现在备忘录(栈)里剩下的，绝对是比今天热的未来日。`
+            });
+
+            if (top === -1) {
+                res[i] = 0;
+                executionTrace.push({
+                    line: 'line-res-0', i, top, stack: [...stack], res: [...res], highlight: [i],
+                    msg: `栈是空的！说明未来没有任何一天比今天热了。当前等待天数记为 <b class='text-green-400'>0</b>。`
+                });
+            } else {
+                let targetIndex = stack[top];
+                let distance = targetIndex - i;
+                res[i] = distance;
+                executionTrace.push({
+                    line: 'line-res-dist', i, top, stack: [...stack], res: [...res], highlight: [i, targetIndex], ruler: {from: i, to: targetIndex},
+                    msg: `🔥 <b>核心逻辑触发！</b><br>当前门牌号: <b>i = ${i}</b><br>未来高墙门牌号: <b>stack[top] = ${targetIndex}</b><br>算出距离：${targetIndex} - ${i} = <b class='text-amber-400 text-xl'>${distance} 天</b>！<br>将 ${distance} 写入第 ${i} 天的雷达报告。`
+                });
+            }
+
+            stack[++top] = i;
+            executionTrace.push({
+                line: 'line-push', i, top, stack: [...stack], res: [...res], highlight: [i],
+                msg: `新王登基：今天的门牌号 ${i} 压入备忘录，充当昨天的未来候选人。`
+            });
+        }
+        executionTrace.push({
+            line: 'line-return', i: null, top, stack: [...stack], res: [...res], highlight: null,
+            msg: `🎉 算法执行完毕！整个过程仅需 O(N) 极速扫描。这就是底层架构的魅力！`
+        });
+    }
+
+    function stepForward() {
+        if (currentTraceIndex < executionTrace.length - 1) {
+            currentTraceIndex++;
+            renderState(executionTrace[currentTraceIndex]);
+
+            if (currentTraceIndex === executionTrace.length - 1) {
+                document.getElementById('step-btn').disabled = true;
+                document.getElementById('step-btn').classList.add('opacity-50');
+            }
+        }
+    }
+
+    function renderState(state) {
+        // 1. 代码高亮
+        document.querySelectorAll('.code-line').forEach(el => el.classList.remove('highlight-line'));
+        if (state.line) {
+            const activeLine = document.getElementById(state.line);
+            if (activeLine) {
+                activeLine.classList.add('highlight-line');
+                activeLine.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
+        }
+
+        // 2. 更新解说
+        document.getElementById('explanation-text').innerHTML = state.msg;
+
+        // 3. 渲染主柱状图
+        renderBars(state);
+
+        // 4. 渲染标尺 (如果有)
+        renderRuler(state);
+
+        // 5. 渲染栈和结果
+        renderStack(state);
+        renderRes(state);
+    }
+
+    function renderBars(state) {
+        const container = document.getElementById('chart-container');
+        const cursorContainer = document.getElementById('cursor-container');
+        container.innerHTML = '';
+        cursorContainer.innerHTML = '';
+
+        const barWidth = `calc(${100 / temps.length}% - 4px)`;
+
+        temps.forEach((temp, idx) => {
+            // 计算高度比例，最低给20%保证能看见
+            const heightPercent = Math.max(20, (temp / maxTemp) * 100);
+
+            // 颜色逻辑
+            let bgColor = 'bg-slate-600';
+            let opacity = 'opacity-50'; // 未处理的默认暗一点
+            let ring = '';
+
+            if (state.i !== null) {
+                if (idx > state.i) opacity = 'opacity-100'; // 已经处理过的未来
+                if (idx === state.i) {
+                    bgColor = 'bg-blue-500'; // 当前天
+                    opacity = 'opacity-100';
+                    ring = 'ring-4 ring-blue-400 z-10';
+                }
+            }
+
+            // 正在被比较或被剔除的目标
+            if (state.highlight && state.highlight.includes(idx) && idx !== state.i) {
+                if (state.isPopping) {
+                    bgColor = 'bg-rose-500'; // 废数据爆红
+                    ring = 'ring-4 ring-rose-400 z-10';
+                } else {
+                    bgColor = 'bg-emerald-500'; // 存活的高墙
+                    ring = 'ring-4 ring-emerald-400 z-10';
+                }
+            }
+
+            // 创建柱子
+            const bar = document.createElement('div');
+            bar.className = `bar-transition ${bgColor} ${opacity} ${ring} rounded-t-md relative flex justify-center w-full max-w-[40px]`;
+            bar.style.height = `${heightPercent}%`;
+            bar.id = `bar-${idx}`;
+
+            bar.innerHTML = `<span class="absolute -top-6 text-xs font-bold ${idx===state.i ? 'text-blue-300' : 'text-slate-300'}">${temp}</span>`;
+
+            // 包装盒用于居中
+            const wrapper = document.createElement('div');
+            wrapper.className = 'h-full flex items-end justify-center w-full';
+            wrapper.appendChild(bar);
+            container.appendChild(wrapper);
+
+            // 创建游标门牌号
+            const cursor = document.createElement('div');
+            cursor.className = 'text-xs text-slate-400 w-full text-center';
+            if (idx === state.i) {
+                cursor.innerHTML = `<div class="text-blue-400 font-bold mb-1">^ i=${idx}</div>`;
+            } else {
+                cursor.innerText = idx;
+            }
+            cursorContainer.appendChild(cursor);
+        });
+    }
+
+    function renderRuler(state) {
+        const rulerContainer = document.getElementById('ruler-container');
+        rulerContainer.innerHTML = '';
+
+        if (state.ruler) {
+            // 需要稍等 DOM 渲染完 bar 才能取位置
+            setTimeout(() => {
+                const fromBar = document.getElementById(`bar-${state.ruler.from}`);
+                const toBar = document.getElementById(`bar-${state.ruler.to}`);
+                const chartArea = document.getElementById('chart-container');
+
+                if (fromBar && toBar && chartArea) {
+                    const fromRect = fromBar.getBoundingClientRect();
+                    const toRect = toBar.getBoundingClientRect();
+                    const chartRect = chartArea.getBoundingClientRect();
+
+                    const left = fromRect.left - chartRect.left + (fromRect.width / 2);
+                    const width = toRect.left - fromRect.left;
+
+                    const rulerHtml = `
+                            <div class="measure-ruler absolute border-t-2 border-l-2 border-r-2 border-amber-400 border-dashed"
+                                 style="left: ${left}px; width: ${width}px; height: 30px; top: 10px;">
+                                <div class="absolute -top-8 w-full text-center text-amber-400 font-bold bg-slate-800 px-2 rounded-full shadow inline-block w-max left-1/2 -translate-x-1/2">
+                                    距离: ${state.ruler.to} - ${state.ruler.from} = ${state.ruler.to - state.ruler.from}
+                                </div>
+                            </div>
+                        `;
+                    rulerContainer.innerHTML = rulerHtml;
+                }
+            }, 50);
+        }
+    }
+
+    function renderStack(state) {
+        document.getElementById('top-display').innerText = `top = ${state.top}`;
+        const container = document.getElementById('stack-container');
+        container.innerHTML = '';
+
+        for (let k = 0; k <= state.top; k++) {
+            const valIndex = state.stack[k];
+            const tempVal = temps[valIndex];
+
+            let isTop = (k === state.top);
+            let bgColor = isTop ? 'bg-blue-900 border-blue-500' : 'bg-slate-800 border-slate-600';
+
+            // 如果正在被比较准备弹出
+            if (isTop && state.checkStack) {
+                bgColor = 'bg-amber-900 border-amber-500 animate-pulse';
+            }
+            if (isTop && state.isPopping) {
+                bgColor = 'bg-rose-900 border-rose-500 line-through';
+            }
+
+            container.innerHTML += `
+                    <div class="${bgColor} border p-2 rounded text-sm flex justify-between items-center transition-all">
+                        <span class="text-slate-400">门牌号 <b class="text-white">${valIndex}</b></span>
+                        <span class="text-slate-400">气温 <b class="text-rose-400">${tempVal}</b></span>
+                        ${isTop ? '<span class="text-xs bg-blue-500 text-white px-1 rounded ml-2">栈顶</span>' : ''}
+                    </div>
+                `;
+        }
+        if (state.top === -1) {
+            container.innerHTML = `<div class="text-slate-500 text-center italic mt-10">备忘录为空</div>`;
+        }
+    }
+
+    function renderRes(state) {
+        const container = document.getElementById('res-container');
+        container.innerHTML = '';
+
+        for (let k = 0; k < temps.length; k++) {
+            let isCurrent = (k === state.i);
+            // 结果数组是从后往前填的
+            let hasValue = state.res[k] !== undefined && state.res[k] !== null && k > state.i;
+            if (isCurrent && (state.line === 'line-res-0' || state.line === 'line-res-dist')) {
+                hasValue = true; // 刚刚算出来的这一刻
+            }
+
+            let val = hasValue ? state.res[k] : '-';
+            let bgColor = isCurrent ? 'bg-green-700 ring-2 ring-green-400' : (hasValue ? 'bg-green-900' : 'bg-slate-800');
+
+            container.innerHTML += `
+                    <div class="${bgColor} rounded border border-slate-600 w-10 h-10 flex flex-col items-center justify-center transition-all">
+                        <span class="text-[10px] text-slate-400 -mt-1">${k}</span>
+                        <span class="font-bold text-white leading-none">${val}</span>
+                    </div>
+                `;
+        }
+    }
+</script>
+</body>
+</html>

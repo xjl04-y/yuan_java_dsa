@@ -1,4 +1,4 @@
-package com.demo.Algorithm;
+package com.demo.Algorithm.Pointers;
 
 import org.junit.jupiter.api.Test;
 
@@ -115,6 +115,7 @@ public class FastAndSlowPointersTest {
     }
 
     /**
+     * 力扣80. 删除排序数组中的重复项 II
      * 测试删除排序数组中的重复项 II (边界/鲁棒性测试)
      * 验证场景：当原数组完全“没有重复元素”时，算法是否会误伤数据或越界。
      */
@@ -133,5 +134,26 @@ public class FastAndSlowPointersTest {
             assert nums[i] == expectedNums[i] : "边界测试元素被误伤，下标：" + i;
         }
         System.out.println("TestRemoveDuplicatesDouble2 (无重复边界测试) 测试通过！");
+    }
+
+    /**
+     * 力扣19. 删除链表的倒数第 N 个节点
+     * 给你一个链表的头节点 head 和一个整数 n ，请你删除链表的倒数第 n 个点，并返回链表的头节点。
+     */
+    @Test
+    public void TestRemoveNthFromEnd() {
+        FastAndSlowPointers.ListNode node1 = new FastAndSlowPointers.ListNode(1);
+        FastAndSlowPointers.ListNode node2 = new FastAndSlowPointers.ListNode(2);
+        FastAndSlowPointers.ListNode node3 = new FastAndSlowPointers.ListNode(3);
+        FastAndSlowPointers.ListNode node4 = new FastAndSlowPointers.ListNode(4);
+        FastAndSlowPointers.ListNode node5 = new FastAndSlowPointers.ListNode(5);
+        node1.next = node2;
+        node2.next = node3;
+        node3.next = node4;
+        node4.next = node5;
+        FastAndSlowPointers.ListNode head = FastAndSlowPointers.removeNthFromEnd(node1, 2);
+        for (FastAndSlowPointers.ListNode cur = head; cur != null; cur = cur.next) {
+            System.out.println(cur.val);
+        }
     }
 }
